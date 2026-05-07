@@ -6,8 +6,11 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 
 load_dotenv("../.env")
 import streamlit as st
-if "GROQ_API_KEY" in st.secrets:
-    os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
+try:
+    if "GROQ_API_KEY" in st.secrets:
+        os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
+except Exception:
+    pass
 
 VECTORSTORE_DIR = "../vectorstore"
 EMBED_MODEL     = "all-MiniLM-L6-v2"
