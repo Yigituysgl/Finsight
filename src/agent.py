@@ -4,8 +4,11 @@ from dotenv import load_dotenv
 from groq import Groq
 
 load_dotenv("../.env")
+import streamlit as st
+if "GROQ_API_KEY" in st.secrets:
+    os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
 
-# Import our three tools
+
 from ingest import extract_text_from_pdfs, chunk_documents, build_vectorstore
 from rag import load_vectorstore, ask
 from risk_scorer import run_risk_analysis
