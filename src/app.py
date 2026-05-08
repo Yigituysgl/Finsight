@@ -89,12 +89,24 @@ def get_risk_color(score):
     else:            return "high-risk",   "🔴 HIGH"
 
 def process_uploaded_file(uploaded_file, company_name):
+<<<<<<< HEAD
     save_path = f"../data/{uploaded_file.name}"
     with open(save_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
 
     with st.spinner("Reading PDF..."):
         documents = extract_text_from_pdfs("../data")
+=======
+import tempfile
+import os
+
+with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+    tmp_file.write(uploaded_file.getbuffer())
+    save_path = tmp_file.name
+
+    with st.spinner("Reading PDF..."):
+        documents = extract_text_from_pdfs(os.path.dirname(save_path))
+>>>>>>> fresh
 
     with st.spinner("Creating knowledge base..."):
         chunks      = chunk_documents(documents)
