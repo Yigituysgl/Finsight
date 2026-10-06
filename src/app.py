@@ -5,9 +5,9 @@ import plotly.graph_objects as go
 
 sys.path.append(os.path.dirname(__file__))
 
-from config import GROQ_MODEL
+from config import GROQ_MODEL, VECTORSTORE_DIR
 from ingest import extract_text_from_pdfs, chunk_documents, build_vectorstore
-from rag import load_vectorstore, ask
+from rag import load_vectorstore, has_documents, ask
 from risk_scorer import run_risk_analysis
 
 
@@ -133,13 +133,16 @@ with col_left:
 
     
     if not st.session_state.doc_processed:
-        try:
-            st.session_state.vectorstore   = load_vectorstore()
+        # Loading a missing store would create an empty one on disk,
+        # so only load when the directory exists and holds documents.
+        vectorstore = load_vectorstore() if VECTORSTORE_DIR.exists() else None
+        if vectorstore is not None and has_documents(vectorstore):
+            st.session_state.vectorstore   = vectorstore
             st.session_state.company_name  = company_name
             st.session_state.doc_processed = True
             st.info("Existing knowledge base loaded!")
-        except:
-            st.warning("Upload a PDF to get started.")
+        else:
+            st.warning("Knowledge base is empty. Upload a PDF to get started.")
 
     st.divider()
 

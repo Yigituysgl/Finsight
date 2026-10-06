@@ -16,6 +16,9 @@ def load_vectorstore():
     print("  Vector store loaded!")
     return vectorstore
 
+def has_documents(vectorstore):
+    return bool(vectorstore.get(limit=1)["ids"])
+
 def ask(question, vectorstore):
     docs = vectorstore.similarity_search(question, k=3)
     context = "\n\n".join([doc.page_content for doc in docs])
