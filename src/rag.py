@@ -2,14 +2,14 @@ from groq import Groq
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
-from config import GROQ_API_KEY, GROQ_MODEL, LLM_TEMPERATURE, VECTORSTORE_DIR
-
-EMBED_MODEL     = "all-MiniLM-L6-v2"
+from config import (COLLECTION_NAME, EMBED_MODEL, GROQ_API_KEY, GROQ_MODEL,
+                    LLM_TEMPERATURE, VECTORSTORE_DIR)
 
 def load_vectorstore():
     print("  Loading vector store from disk...")
     embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
     vectorstore = Chroma(
+        collection_name=COLLECTION_NAME,
         persist_directory=str(VECTORSTORE_DIR),
         embedding_function=embeddings
     )

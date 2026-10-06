@@ -10,6 +10,9 @@ EDGAR_DIR       = DATA_DIR / "edgar"
 VECTORSTORE_DIR = ROOT_DIR / "vectorstore"
 FILINGS_CONFIG  = ROOT_DIR / "filings.toml"
 
+COLLECTION_NAME = "filings"
+EMBED_MODEL     = "all-MiniLM-L6-v2"
+
 load_dotenv(ROOT_DIR / ".env")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")

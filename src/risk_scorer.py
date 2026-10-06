@@ -1,11 +1,8 @@
 import re
 from groq import Groq
-from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
 
-from config import GROQ_API_KEY, GROQ_MODEL, LLM_TEMPERATURE, VECTORSTORE_DIR
-
-EMBED_MODEL     = "all-MiniLM-L6-v2"
+from config import GROQ_API_KEY, GROQ_MODEL, LLM_TEMPERATURE
+from rag import load_vectorstore
 
 # gpt-oss is a reasoning model: its reasoning tokens count against
 # max_tokens, so the limits must leave room for reasoning plus the answer.
@@ -25,14 +22,6 @@ RISK_CATEGORIES = {
     "Operational Risk":  ["supply chain", "operating costs", "workforce", "disruption"],
     "Guidance Risk":     ["outlook", "forward looking", "uncertainty", "risk factors"]
 }
-
-def load_vectorstore():
-    embeddings  = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
-    vectorstore = Chroma(
-        persist_directory=str(VECTORSTORE_DIR),
-        embedding_function=embeddings
-    )
-    return vectorstore
 
 def score_category(category_name, search_terms, vectorstore):
     query   = " ".join(search_terms[:3])
