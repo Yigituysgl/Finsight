@@ -1,0 +1,43 @@
+# Pinned 10-K filings. Results stay reproducible when newer filings
+# appear; change a pin deliberately (see `python src/fetch_filings.py --list`).
+# fiscal_year is the year the 10-K covers; period_end is the fiscal year end.
+
+[[filing]]
+ticker = "AAPL"
+company = "Apple Inc."
+cik = 320193
+form = "10-K"
+fiscal_year = 2025
+period_end = "2025-09-27"
+accession = "0000320193-25-000079"
+primary_document = "aapl-20250927.htm"
+
+[[filing]]
+ticker = "TSLA"
+company = "Tesla, Inc."
+cik = 1318605
+form = "10-K"
+fiscal_year = 2025
+period_end = "2025-12-31"
+accession = "0001628280-26-003952"
+primary_document = "tsla-20251231.htm"
+
+[[filing]]
+ticker = "KO"
+company = "The Coca-Cola Company"
+cik = 21344
+form = "10-K"
+fiscal_year = 2025
+period_end = "2025-12-31"
+accession = "0001628280-26-010047"
+primary_document = "ko-20251231.htm"
+
+[[filing]]
+ticker = "PM"
+company = "Philip Morris International Inc."
+cik = 1413329
+form = "10-K"
+fiscal_year = 2025
+period_end = "2025-12-31"
+accession = "0001628280-26-005939"
+primary_document = "pm-20251231.htm"
