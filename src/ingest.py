@@ -18,10 +18,10 @@ CHUNK_SIZE    = 500
 CHUNK_OVERLAP = 50
 
 
-def make_splitter():
+def make_splitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP):
     return RecursiveCharacterTextSplitter(
-        chunk_size=CHUNK_SIZE,
-        chunk_overlap=CHUNK_OVERLAP,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
         separators=["\n\n", "\n", ". ", " ", ""]
     )
 

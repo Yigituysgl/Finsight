@@ -146,8 +146,8 @@ Be specific, use actual numbers from the context."""
     )
     return (response.choices[0].message.content or "").strip()
 
-def run_risk_analysis(vectorstore, ticker, company_name):
-    print(f"\n=== FinSight Risk Analysis: {company_name} ===\n")
+def score_categories(vectorstore, ticker):
+    """Return ({category: (score, reason)}, {category: "Item 7A ×2, ..."})."""
     scores_dict, read_from = {}, {}
     item_7a = item_7a_source(vectorstore, ticker)
     print(f"  Item 7A text: {item_7a}")
@@ -158,6 +158,11 @@ def run_risk_analysis(vectorstore, ticker, company_name):
                                          section_quotas(category, item_7a))
         scores_dict[category] = score_category(category, docs)
         read_from[category]   = describe_read_from(docs)
+    return scores_dict, read_from
+
+def run_risk_analysis(vectorstore, ticker, company_name):
+    print(f"\n=== FinSight Risk Analysis: {company_name} ===\n")
+    scores_dict, read_from = score_categories(vectorstore, ticker)
 
     # Unparsed categories (score None) are left out of the overall score
     # instead of being counted as a default value.
