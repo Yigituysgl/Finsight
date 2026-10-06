@@ -39,8 +39,38 @@ NOISE_LINE = re.compile(r"^(\d{1,3}|table of contents)$", re.IGNORECASE)
 FOOTER_LINE        = re.compile(r"^(?P<label>.+?)\s*\|\s*\d{1,3}$")
 FOOTER_MIN_REPEATS = 5
 
+# Bold text is wrapped in markers carrying its font size, so a line that is
+# entirely bold can be recognised as a heading of that size after get_text().
+BOLD_START, BOLD_END = "\x02", "\x03"
+BOLD_STYLE   = re.compile(r"font-weight:\s*(bold|[6-9]00)", re.IGNORECASE)
+FONT_SIZE    = re.compile(r"font-size:\s*([\d.]+)pt", re.IGNORECASE)
+BOLD_SEGMENT = re.compile(f"{BOLD_START}([\\d.]*){BOLD_START}(.*?){BOLD_END}")
+MARKERS      = re.compile(f"{BOLD_START}[\\d.]*{BOLD_START}|{BOLD_END}")
 
-def html_to_lines(html):
+# An Item 7A that only points elsewhere, e.g. PM: "The information called for
+# by this Item is included in Item 7, Market Risk."
+POINTER_MAX_CHARS = 500
+POINTER = re.compile(r"included in Item\s*7\s*,\s*[\"“]?(?P<name>[^\"”.]+?)[\"”]?\s*\.?$",
+                     re.IGNORECASE)
+
+# How each section's text was obtained (stored as chunk metadata).
+OWN, POINTER_RESOLVED, SHORT_UNRESOLVED = "own", "pointer_resolved", "short_unresolved"
+
+
+def is_bold(tag):
+    return tag.name in ("b", "strong") or bool(BOLD_STYLE.search(tag.get("style", "")))
+
+
+def font_size(tag):
+    for el in [tag, *tag.parents]:
+        match = FONT_SIZE.search(el.get("style", "") if el.name else "")
+        if match:
+            return match.group(1)
+    return "0"
+
+
+def parse_lines(html):
+    """Return [(text, heading_size)]; heading_size is set for all-bold lines."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", XMLParsedAsHTMLWarning)
         soup = BeautifulSoup(html, "lxml")
@@ -48,25 +78,47 @@ def html_to_lines(html):
     # Inline XBRL keeps its machine-readable facts in a hidden header.
     for header in soup.find_all("ix:header"):
         header.decompose()
+    for tag in soup.find_all(is_bold):
+        if not any(is_bold(parent) for parent in tag.parents if parent.name):
+            tag.insert(0, f"{BOLD_START}{font_size(tag)}{BOLD_START}")
+            tag.append(BOLD_END)
     for tag in soup.find_all(BLOCK_TAGS):
         tag.insert_before("\n")
         tag.insert_after("\n")
     for tag in soup.find_all(CELL_TAGS):
         tag.insert_after(" ")
 
-    text  = soup.get_text().replace("\xa0", " ")
-    lines = (re.sub(r"\s+", " ", line).strip() for line in text.split("\n"))
-    lines = [line for line in lines if line and not NOISE_LINE.match(line)]
-    return strip_page_footers(lines)
+    parsed = []
+    for raw in soup.get_text().replace("\xa0", " ").split("\n"):
+        raw  = re.sub(r"\s+", " ", raw).strip()
+        text = re.sub(r"\s+", " ", MARKERS.sub("", raw)).strip()
+        if not text or NOISE_LINE.match(text):
+            continue
+        segments = BOLD_SEGMENT.findall(raw)
+        all_bold = segments and not MARKERS.sub("", BOLD_SEGMENT.sub("", raw)).strip()
+        size     = max(float(s or 0) for s, _ in segments) if all_bold else None
+        parsed.append((text, size))
+
+    footers = page_footer_labels([text for text, _ in parsed])
+    return [(text, size) for text, size in parsed if footer_label(text) not in footers]
+
+
+def html_to_lines(html):
+    return [text for text, _ in parse_lines(html)]
+
+
+def footer_label(line):
+    match = FOOTER_LINE.match(line)
+    return match.group("label") if match else None
+
+
+def page_footer_labels(lines):
+    counts = Counter(label for label in map(footer_label, lines) if label)
+    return {label for label, n in counts.items() if n >= FOOTER_MIN_REPEATS}
 
 
 def strip_page_footers(lines):
-    def footer_label(line):
-        match = FOOTER_LINE.match(line)
-        return match.group("label") if match else None
-
-    counts  = Counter(label for label in map(footer_label, lines) if label)
-    footers = {label for label, n in counts.items() if n >= FOOTER_MIN_REPEATS}
+    footers = page_footer_labels(lines)
     return [line for line in lines if footer_label(line) not in footers]
 
 
@@ -98,21 +150,65 @@ def find_headings(lines):
     return headings
 
 
+def resolve_pointer(text, item7_range, lines, sizes):
+    """Return (subsection_name, text) of the Item 7 subsection a 7A points to, or None."""
+    match = POINTER.search(" ".join(text.split()))
+    if not match:
+        return None
+    name  = match.group("name").strip()
+    start = next((i for i in item7_range
+                  if lines[i].casefold() == name.casefold() and sizes[i] is not None), None)
+    if start is None:
+        return None
+    # The subsection runs to the next heading at least as large as its own.
+    end = next((i for i in item7_range
+                if i > start and sizes[i] is not None and sizes[i] >= sizes[start]),
+               item7_range.stop)
+    body = "\n".join(lines[start + 1:end])
+    return (name, body) if body else None
+
+
 def split_sections(html):
-    """Return [{section, title, text}] for the Items in KEEP that were found."""
-    lines    = html_to_lines(html)
+    """Return [{section, title, text, content_source, resolved_from}] for Items in KEEP."""
+    parsed   = parse_lines(html)
+    lines    = [text for text, _ in parsed]
+    sizes    = [size for _, size in parsed]
     headings = find_headings(lines)
+
+    ranges = {}
+    for n, (i, item, _) in enumerate(headings):
+        end = headings[n + 1][0] if n + 1 < len(headings) else len(lines)
+        ranges[item] = range(i + 1, end)
+
     sections = []
-    for n, (i, item, title) in enumerate(headings):
+    for i, item, title in headings:
         if item not in KEEP:
             continue
-        end = headings[n + 1][0] if n + 1 < len(headings) else len(lines)
-        sections.append({
-            "section": item,
-            "title":   title.rstrip(".") or lines[i + 1],
-            "text":    "\n".join(lines[i + 1:end]),
-        })
+        section = {
+            "section":        item,
+            "title":          title.rstrip(".") or lines[i + 1],
+            "text":           "\n".join(lines[j] for j in ranges[item]),
+            "content_source": OWN,
+            "resolved_from":  "",
+        }
+        if item == "7A" and len(section["text"]) < POINTER_MAX_CHARS:
+            resolved = resolve_pointer(section["text"], ranges.get("7", range(0)), lines, sizes)
+            if resolved:
+                name, section["text"]     = resolved
+                section["content_source"] = POINTER_RESOLVED
+                section["resolved_from"]  = f"Item 7, {name}"
+            else:
+                section["content_source"] = SHORT_UNRESOLVED
+        sections.append(section)
     return sections
+
+
+def describe_7a(section):
+    if section["content_source"] == POINTER_RESOLVED:
+        return f"pointer resolved to {section['resolved_from']}"
+    if section["content_source"] == SHORT_UNRESOLVED:
+        return "short, pointer not resolved: risk scoring also reads Item 7"
+    return "own content"
 
 
 def main():
@@ -129,6 +225,9 @@ def main():
         for s in sections:
             preview = s["text"][:150].replace("\n", " ")
             print(f"  {s['section']:3} {len(s['text']):>9,} chars  {s['title'][:45]:45}  {preview}")
+        item_7a = next((s for s in sections if s["section"] == "7A"), None)
+        if item_7a:
+            print(f"  7A path: {describe_7a(item_7a)}")
 
 
 if __name__ == "__main__":

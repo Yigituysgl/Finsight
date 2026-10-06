@@ -93,6 +93,56 @@ def test_rare_pipe_lines_are_kept():
     assert strip_page_footers(lines) == lines
 
 
+def pointer_filing(pointer_target, item_7a=None):
+    """A filing whose Item 7 has 12pt bold subsections and a 10pt bold table caption."""
+    h12 = '<div><span style="font-size:12pt;font-weight:700">{}</span></div>'
+    h10 = '<div><span style="font-size:10pt;font-weight:700">{}</span></div>'
+    item_7a = item_7a or ("The information called for by this Item is included in "
+                          f"Item 7, {pointer_target}.")
+    return f"""<html><body>
+<p>Item 1. Business</p><p>{BODY}</p>
+<p>Item 7. Management's Discussion and Analysis</p>
+{h12.format("Liquidity")}<p>Cash is ample.</p>
+{h12.format("Market Risk")}
+<p>Value at Risk - We use a value at risk computation.</p>
+{h10.format("Fair Value Impact")}
+<table><tr><td>Foreign currency rates</td><td>$97</td></tr></table>
+{h12.format("Cautionary Factors")}<p>Forward-looking statements.</p>
+<p>Item 7A. Quantitative and Qualitative Disclosures About Market Risk</p>
+<p>{item_7a}</p>
+<p>Item 8. Financial Statements</p><p>Statements.</p>
+</body></html>""".encode()
+
+
+def test_7a_pointer_resolves_to_named_item_7_subsection():
+    item_7a = {s["section"]: s for s in split_sections(pointer_filing("Market Risk"))}["7A"]
+    assert item_7a["content_source"] == "pointer_resolved"
+    assert item_7a["resolved_from"] == "Item 7, Market Risk"
+    # Runs past the smaller 10pt caption, stops at the next 12pt heading.
+    assert item_7a["text"] == ("Value at Risk - We use a value at risk computation.\n"
+                               "Fair Value Impact\n"
+                               "Foreign currency rates $97")
+
+
+def test_unresolvable_7a_pointer_is_flagged_and_kept():
+    item_7a = {s["section"]: s for s in split_sections(pointer_filing("Interest Rate Risk"))}["7A"]
+    assert item_7a["content_source"] == "short_unresolved"
+    assert item_7a["resolved_from"] == ""
+    assert "included in Item 7, Interest Rate Risk" in item_7a["text"]
+
+
+def test_7a_with_own_content_is_not_treated_as_pointer():
+    own = "We hedge forecasted foreign currency cash flows. " * 20
+    item_7a = {s["section"]: s for s in split_sections(pointer_filing("", item_7a=own))}["7A"]
+    assert item_7a["content_source"] == "own"
+    assert item_7a["text"] == own.strip()
+
+
+def test_bold_markers_leave_no_extra_whitespace():
+    html = '<table><tr><td><span style="font-weight:700">Total</span></td><td>15,777</td></tr></table>'
+    assert html_to_lines(html.encode()) == ["Total 15,777"]
+
+
 def test_no_body_found_returns_nothing():
     toc_only = "<table><tr><td>Item 1.</td><td>Business</td></tr>" \
                "<tr><td>Item 1A.</td><td>Risk Factors</td></tr></table>"
