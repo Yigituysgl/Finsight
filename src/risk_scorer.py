@@ -1,8 +1,10 @@
 import re
+from collections import Counter
 from groq import Groq
 
 from config import GROQ_API_KEY, GROQ_MODEL, LLM_TEMPERATURE
 from rag import load_vectorstore
+from sections import SHORT_UNRESOLVED
 
 # gpt-oss is a reasoning model: its reasoning tokens count against
 # max_tokens, so the limits must leave room for reasoning plus the answer.
@@ -14,19 +16,56 @@ SUMMARY_MAX_TOKENS = 1024
 SCORE_LINE  = re.compile(r"^\s*SCORE\s*:\s*\[?\s*(\d+)(?!\d|\.\d)", re.IGNORECASE | re.MULTILINE)
 REASON_LINE = re.compile(r"^\s*REASON\s*:\s*(.+)$", re.IGNORECASE | re.MULTILINE)
 
+# Each category reads a fixed number of chunks from each 10-K Item that should
+# discuss it, primary Item first. Searching each Item separately keeps a large
+# Item 8 from crowding out a short Item 7A.
 RISK_CATEGORIES = {
-    "Liquidity Risk":    ["cash flow", "debt", "liquidity", "borrowing"],
-    "Revenue Risk":      ["revenue decline", "net sales decrease", "demand weakness"],
-    "Legal Risk":        ["litigation", "lawsuit", "regulatory", "investigation"],
-    "Market Risk":       ["competition", "market share", "interest rate", "foreign exchange"],
-    "Operational Risk":  ["supply chain", "operating costs", "workforce", "disruption"],
-    "Guidance Risk":     ["outlook", "forward looking", "uncertainty", "risk factors"]
+    "Liquidity Risk":     {"query":    "liquidity capital resources cash flow debt borrowing",
+                           "sections": {"7": 2, "8": 1}},
+    "Revenue Risk":       {"query":    "revenue decline net sales decrease demand weakness",
+                           "sections": {"7": 2, "1A": 1}},
+    "Legal Risk":         {"query":    "litigation lawsuit regulatory investigation contingencies",
+                           "sections": {"3": 2, "8": 1, "1A": 1}},
+    "FX Risk":            {"query":    "foreign currency exchange rate risk hedging",
+                           "sections": {"7A": 2, "8": 1}},
+    "Interest Rate Risk": {"query":    "interest rate risk sensitivity debt investments",
+                           "sections": {"7A": 2, "8": 1}},
+    "Operational Risk":   {"query":    "supply chain operational disruption workforce costs",
+                           "sections": {"1A": 2, "7": 1}},
 }
 
-def score_category(category_name, search_terms, vectorstore, ticker):
-    query   = " ".join(search_terms[:3])
-    docs    = vectorstore.similarity_search(query, k=3, filter={"ticker": ticker})
-    context = "\n\n".join([doc.page_content for doc in docs])
+# When a filing's Item 7A is a pointer that could not be resolved, categories
+# that read 7A also read Item 7, where the market risk discussion usually is.
+FALLBACK_ITEM_7_CHUNKS = 2
+
+def item_7a_source(vectorstore, ticker):
+    """How the filing's Item 7A text was obtained (own / pointer_resolved / short_unresolved)."""
+    found = vectorstore.get(where={"$and": [{"ticker": ticker}, {"section": "7A"}]},
+                            limit=1, include=["metadatas"])
+    return found["metadatas"][0]["content_source"] if found["ids"] else None
+
+def section_quotas(category, item_7a):
+    quotas = dict(RISK_CATEGORIES[category]["sections"])
+    if "7A" in quotas and item_7a in (SHORT_UNRESOLVED, None):
+        quotas.setdefault("7", FALLBACK_ITEM_7_CHUNKS)
+    return quotas
+
+def retrieve(vectorstore, ticker, query, quotas):
+    docs = []
+    for section, k in quotas.items():
+        docs += vectorstore.similarity_search(
+            query, k=k, filter={"$and": [{"ticker": ticker}, {"section": section}]})
+    return docs
+
+def describe_read_from(docs):
+    """E.g. "Item 7A ×2, Item 8 ×1", in retrieval order."""
+    counts = Counter(doc.metadata["section"] for doc in docs)
+    return ", ".join(f"Item {section} ×{n}" for section, n in counts.items())
+
+def score_category(category_name, docs):
+    if not docs:
+        return None, "No text found in the Items this category reads"
+    context = "\n\n".join(f"[Item {doc.metadata['section']}]\n{doc.page_content}" for doc in docs)
 
     prompt = f"""You are a financial risk analyst.
 Analyze the following text and score the {category_name} on a scale of 0-10.
@@ -71,8 +110,7 @@ def generate_summary(scores_dict, overall_score, vectorstore, ticker):
     if overall_score is None:
         return "No risk category could be scored, so no summary was generated."
 
-    docs    = vectorstore.similarity_search("financial performance risk outlook", k=3,
-                                            filter={"ticker": ticker})
+    docs    = retrieve(vectorstore, ticker, "financial performance risk outlook", {"7": 3})
     context = "\n\n".join([doc.page_content for doc in docs])
     scores_text = "\n".join([
         f"- {cat}: {score}/10 ({get_risk_level(score)})" if score is not None
@@ -102,12 +140,16 @@ Be specific, use actual numbers from the context."""
 
 def run_risk_analysis(vectorstore, ticker, company_name):
     print(f"\n=== FinSight Risk Analysis: {company_name} ===\n")
-    scores_dict = {}
+    scores_dict, read_from = {}, {}
+    item_7a = item_7a_source(vectorstore, ticker)
+    print(f"  Item 7A text: {item_7a}")
 
-    for category, terms in RISK_CATEGORIES.items():
+    for category, spec in RISK_CATEGORIES.items():
         print(f"  Scoring {category}...")
-        score, reason         = score_category(category, terms, vectorstore, ticker)
-        scores_dict[category] = (score, reason)
+        docs                  = retrieve(vectorstore, ticker, spec["query"],
+                                         section_quotas(category, item_7a))
+        scores_dict[category] = score_category(category, docs)
+        read_from[category]   = describe_read_from(docs)
 
     # Unparsed categories (score None) are left out of the overall score
     # instead of being counted as a default value.
@@ -121,13 +163,13 @@ def run_risk_analysis(vectorstore, ticker, company_name):
     for category, (score, reason) in scores_dict.items():
         if score is None:
             print(f"\n{category:20} n/a")
-            print(f"  {reason}")
-            continue
-        level = get_risk_level(score)
-        bar   = "█" * score + "░" * (10 - score)
-        print(f"\n{category:20} {score}/10  [{level}]")
-        print(f"  {bar}")
+        else:
+            level = get_risk_level(score)
+            bar   = "█" * score + "░" * (10 - score)
+            print(f"\n{category:20} {score}/10  [{level}]")
+            print(f"  {bar}")
         print(f"  {reason}")
+        print(f"  Read from: {read_from[category] or 'nothing'}")
 
     print("\n" + "="*50)
     print(f"Categories scored: {len(parsed)}/{len(scores_dict)}")
@@ -142,7 +184,7 @@ def run_risk_analysis(vectorstore, ticker, company_name):
     print(f"\nEXECUTIVE SUMMARY:\n{summary}")
     print("\n" + "="*50)
 
-    return overall, scores_dict, summary
+    return overall, scores_dict, summary, read_from
 
 if __name__ == "__main__":
     vectorstore = load_vectorstore()

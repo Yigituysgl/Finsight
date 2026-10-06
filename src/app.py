@@ -133,7 +133,7 @@ with col_left:
     if st.session_state.doc_processed:
         if st.button("🔍 Run Risk Analysis", type="secondary"):
             with st.spinner("Analyzing risk across 6 categories..."):
-                overall, scores_dict, summary = run_risk_analysis(
+                overall, scores_dict, summary, read_from = run_risk_analysis(
                     st.session_state.vectorstore,
                     ticker=st.session_state.filing["ticker"],
                     company_name=st.session_state.filing["company"]
@@ -141,7 +141,8 @@ with col_left:
                 st.session_state.risk_results = {
                     "overall":     overall,
                     "scores_dict": scores_dict,
-                    "summary":     summary
+                    "summary":     summary,
+                    "read_from":   read_from
                 }
             st.success("Risk analysis complete!")
 
@@ -223,7 +224,7 @@ with col_right:
         else:
             st.error("No category could be scored, so there is no overall score.")
         if failed:
-            st.warning(f"{failed} of {len(scores_dict)} categories could not be parsed "
+            st.warning(f"{failed} of {len(scores_dict)} categories could not be scored "
                        f"and are left out of the overall score.")
 
 
@@ -238,6 +239,7 @@ with col_right:
                 f'<small>{reason}</small></div>',
                 unsafe_allow_html=True
             )
+            st.caption(f"Read from: {results['read_from'][category] or 'nothing'}")
 
         
         st.divider()
