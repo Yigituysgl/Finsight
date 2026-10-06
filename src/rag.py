@@ -2,7 +2,7 @@ from groq import Groq
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
-from config import GROQ_API_KEY, VECTORSTORE_DIR
+from config import GROQ_API_KEY, LLM_TEMPERATURE, VECTORSTORE_DIR
 
 EMBED_MODEL     = "all-MiniLM-L6-v2"
 GROQ_MODEL      = "llama-3.3-70b-versatile"
@@ -37,7 +37,7 @@ Provide a clear, structured answer with specific numbers where available."""
     response = client.chat.completions.create(
         model=GROQ_MODEL,
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.1
+        temperature=LLM_TEMPERATURE
     )
 
     answer = response.choices[0].message.content

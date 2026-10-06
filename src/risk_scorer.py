@@ -2,7 +2,7 @@ from groq import Groq
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
-from config import GROQ_API_KEY, VECTORSTORE_DIR
+from config import GROQ_API_KEY, LLM_TEMPERATURE, VECTORSTORE_DIR
 
 EMBED_MODEL     = "all-MiniLM-L6-v2"
 GROQ_MODEL      = "llama-3.3-70b-versatile"
@@ -44,7 +44,7 @@ REASON: [one sentence explanation]"""
     response = client.chat.completions.create(
         model=GROQ_MODEL,
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.1,
+        temperature=LLM_TEMPERATURE,
         max_tokens=150
     )
 
@@ -91,7 +91,7 @@ Be specific, use actual numbers from the context."""
     response = client.chat.completions.create(
         model=GROQ_MODEL,
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.2,
+        temperature=LLM_TEMPERATURE,
         max_tokens=300
     )
     return response.choices[0].message.content.strip()

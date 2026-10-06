@@ -11,3 +11,7 @@ VECTORSTORE_DIR = ROOT_DIR / "vectorstore"
 load_dotenv(ROOT_DIR / ".env")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+# Single sampling temperature for every LLM call (Q&A, risk scoring,
+# summary). Evaluation scripts must read this value, not hardcode one.
+LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.1"))
