@@ -1,3 +1,4 @@
+import re
 from groq import Groq
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
@@ -10,6 +11,11 @@ EMBED_MODEL     = "all-MiniLM-L6-v2"
 # max_tokens, so the limits must leave room for reasoning plus the answer.
 SCORE_MAX_TOKENS   = 1024
 SUMMARY_MAX_TOKENS = 1024
+
+# "SCORE: 7", "SCORE: [7]", "SCORE: 7/10". Decimals such as "7.5" are
+# rejected rather than truncated.
+SCORE_LINE  = re.compile(r"^\s*SCORE\s*:\s*\[?\s*(\d+)(?!\d|\.\d)", re.IGNORECASE | re.MULTILINE)
+REASON_LINE = re.compile(r"^\s*REASON\s*:\s*(.+)$", re.IGNORECASE | re.MULTILINE)
 
 RISK_CATEGORIES = {
     "Liquidity Risk":    ["cash flow", "debt", "liquidity", "borrowing"],
@@ -52,19 +58,19 @@ REASON: [one sentence explanation]"""
         max_tokens=SCORE_MAX_TOKENS
     )
 
-    raw    = (response.choices[0].message.content or "").strip()
-    score  = 5
-    reason = "Could not parse response"
+    return parse_score_response(response.choices[0].message.content or "")
 
-    for line in raw.split("\n"):
-        if line.startswith("SCORE:"):
-            try:
-                score = int(line.replace("SCORE:", "").strip())
-            except:
-                score = 5
-        if line.startswith("REASON:"):
-            reason = line.replace("REASON:", "").strip()
+def parse_score_response(raw):
+    """Return (score, reason). score is None when no valid 0-10 integer is found."""
+    text         = raw.replace("*", "")  # tolerate markdown bold: **SCORE:** 7
+    score_match  = SCORE_LINE.search(text)
+    reason_match = REASON_LINE.search(text)
 
+    score = int(score_match.group(1)) if score_match else None
+    if score is None or not 0 <= score <= 10:
+        return None, "Could not parse model response"
+
+    reason = reason_match.group(1).strip() if reason_match else "No reason given"
     return score, reason
 
 def get_risk_level(score):
@@ -73,10 +79,14 @@ def get_risk_level(score):
     else:            return "HIGH"
 
 def generate_summary(scores_dict, overall_score, vectorstore):
+    if overall_score is None:
+        return "No risk category could be scored, so no summary was generated."
+
     docs    = vectorstore.similarity_search("financial performance risk outlook", k=3)
     context = "\n\n".join([doc.page_content for doc in docs])
     scores_text = "\n".join([
-        f"- {cat}: {score}/10 ({get_risk_level(score)})"
+        f"- {cat}: {score}/10 ({get_risk_level(score)})" if score is not None
+        else f"- {cat}: n/a (could not be scored)"
         for cat, (score, _) in scores_dict.items()
     ])
 
@@ -103,21 +113,26 @@ Be specific, use actual numbers from the context."""
 def run_risk_analysis(vectorstore, company_name="Company"):
     print(f"\n=== FinSight Risk Analysis: {company_name} ===\n")
     scores_dict = {}
-    total_score = 0
 
     for category, terms in RISK_CATEGORIES.items():
         print(f"  Scoring {category}...")
         score, reason         = score_category(category, terms, vectorstore)
         scores_dict[category] = (score, reason)
-        total_score          += score
 
-    overall = round((total_score / 60) * 100)
+    # Unparsed categories (score None) are left out of the overall score
+    # instead of being counted as a default value.
+    parsed  = [score for score, _ in scores_dict.values() if score is not None]
+    overall = round(sum(parsed) / (10 * len(parsed)) * 100) if parsed else None
 
     print("\n" + "="*50)
     print(f"RISK RESULTS: {company_name}")
     print("="*50)
 
     for category, (score, reason) in scores_dict.items():
+        if score is None:
+            print(f"\n{category:20} n/a")
+            print(f"  {reason}")
+            continue
         level = get_risk_level(score)
         bar   = "█" * score + "░" * (10 - score)
         print(f"\n{category:20} {score}/10  [{level}]")
@@ -125,7 +140,11 @@ def run_risk_analysis(vectorstore, company_name="Company"):
         print(f"  {reason}")
 
     print("\n" + "="*50)
-    print(f"OVERALL RISK SCORE: {overall}/100  —  {get_risk_level(overall//10)} RISK")
+    print(f"Categories scored: {len(parsed)}/{len(scores_dict)}")
+    if overall is None:
+        print("OVERALL RISK SCORE: n/a")
+    else:
+        print(f"OVERALL RISK SCORE: {overall}/100  —  {get_risk_level(overall//10)} RISK")
     print("="*50)
 
     print("\nGenerating executive summary...")

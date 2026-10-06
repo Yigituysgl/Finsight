@@ -39,6 +39,7 @@ st.markdown("""
     .low-risk    { background-color: #d4edda; color: #155724; }
     .medium-risk { background-color: #fff3cd; color: #856404; }
     .high-risk   { background-color: #f8d7da; color: #721c24; }
+    .na-risk     { background-color: #e2e3e5; color: #383d41; }
     .chat-message {
         padding: 1rem;
         border-radius: 8px;
@@ -83,6 +84,7 @@ def create_gauge(score):
     return fig
 
 def get_risk_color(score):
+    if score is None: return "na-risk",    "⚪"
     if score <= 3:   return "low-risk",    "🟢 LOW"
     elif score <= 6: return "medium-risk", "🟡 MEDIUM"
     else:            return "high-risk",   "🔴 HIGH"
@@ -231,16 +233,24 @@ with col_right:
         summary      = results["summary"]
 
         
-        st.plotly_chart(create_gauge(overall), use_container_width=True)
+        failed = sum(1 for score, _ in scores_dict.values() if score is None)
+        if overall is not None:
+            st.plotly_chart(create_gauge(overall), use_container_width=True)
+        else:
+            st.error("No category could be scored, so there is no overall score.")
+        if failed:
+            st.warning(f"{failed} of {len(scores_dict)} categories could not be parsed "
+                       f"and are left out of the overall score.")
 
-        
+
         st.markdown("**Category Breakdown:**")
         for category, (score, reason) in scores_dict.items():
             css_class, label = get_risk_color(score)
             short_name       = category.replace(" Risk", "")
+            score_text       = "n/a" if score is None else f"{score}/10"
             st.markdown(
                 f'<div class="risk-box {css_class}">'
-                f'<b>{short_name}</b>: {score}/10 {label}<br>'
+                f'<b>{short_name}</b>: {score_text} {label}<br>'
                 f'<small>{reason}</small></div>',
                 unsafe_allow_html=True
             )
