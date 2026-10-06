@@ -2,10 +2,9 @@ from groq import Groq
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
-from config import GROQ_API_KEY, LLM_TEMPERATURE, VECTORSTORE_DIR
+from config import GROQ_API_KEY, GROQ_MODEL, LLM_TEMPERATURE, VECTORSTORE_DIR
 
 EMBED_MODEL     = "all-MiniLM-L6-v2"
-GROQ_MODEL      = "llama-3.3-70b-versatile"
 
 def load_vectorstore():
     print("  Loading vector store from disk...")

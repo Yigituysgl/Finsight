@@ -2,10 +2,14 @@ from groq import Groq
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
-from config import GROQ_API_KEY, LLM_TEMPERATURE, VECTORSTORE_DIR
+from config import GROQ_API_KEY, GROQ_MODEL, LLM_TEMPERATURE, VECTORSTORE_DIR
 
 EMBED_MODEL     = "all-MiniLM-L6-v2"
-GROQ_MODEL      = "llama-3.3-70b-versatile"
+
+# gpt-oss is a reasoning model: its reasoning tokens count against
+# max_tokens, so the limits must leave room for reasoning plus the answer.
+SCORE_MAX_TOKENS   = 1024
+SUMMARY_MAX_TOKENS = 1024
 
 RISK_CATEGORIES = {
     "Liquidity Risk":    ["cash flow", "debt", "liquidity", "borrowing"],
@@ -45,10 +49,10 @@ REASON: [one sentence explanation]"""
         model=GROQ_MODEL,
         messages=[{"role": "user", "content": prompt}],
         temperature=LLM_TEMPERATURE,
-        max_tokens=150
+        max_tokens=SCORE_MAX_TOKENS
     )
 
-    raw    = response.choices[0].message.content.strip()
+    raw    = (response.choices[0].message.content or "").strip()
     score  = 5
     reason = "Could not parse response"
 
@@ -92,9 +96,9 @@ Be specific, use actual numbers from the context."""
         model=GROQ_MODEL,
         messages=[{"role": "user", "content": prompt}],
         temperature=LLM_TEMPERATURE,
-        max_tokens=300
+        max_tokens=SUMMARY_MAX_TOKENS
     )
-    return response.choices[0].message.content.strip()
+    return (response.choices[0].message.content or "").strip()
 
 def run_risk_analysis(vectorstore, company_name="Company"):
     print(f"\n=== FinSight Risk Analysis: {company_name} ===\n")

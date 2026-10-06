@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 
 sys.path.append(os.path.dirname(__file__))
 
+from config import GROQ_MODEL
 from ingest import extract_text_from_pdfs, chunk_documents, build_vectorstore
 from rag import load_vectorstore, ask
 from risk_scorer import run_risk_analysis
@@ -102,7 +103,7 @@ def process_uploaded_file(uploaded_file, company_name):
 
 
 st.markdown('<p class="main-header">📊 FinSight AI</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">Financial Document Intelligence — Powered by LLaMA 3.3 70B</p>',
+st.markdown(f'<p class="sub-header">Financial Document Intelligence — {GROQ_MODEL} via Groq</p>',
             unsafe_allow_html=True)
 st.divider()
 
