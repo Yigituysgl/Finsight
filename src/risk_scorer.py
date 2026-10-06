@@ -14,6 +14,9 @@ SUMMARY_MAX_TOKENS = 1024
 # "SCORE: 7", "SCORE: [7]", "SCORE: 7/10". Decimals such as "7.5" are
 # rejected rather than truncated.
 SCORE_LINE  = re.compile(r"^\s*SCORE\s*:\s*\[?\s*(\d+)(?!\d|\.\d)", re.IGNORECASE | re.MULTILINE)
+# The model answers INSUFFICIENT when the text does not let it judge the risk.
+INSUFFICIENT_LINE = re.compile(r"^\s*SCORE\s*:\s*\[?\s*INSUFFICIENT\b", re.IGNORECASE | re.MULTILINE)
+MIN_SCORE, MAX_SCORE = 1, 10
 REASON_LINE = re.compile(r"^\s*REASON\s*:\s*(.+)$", re.IGNORECASE | re.MULTILINE)
 
 # Each category reads a fixed number of chunks from each 10-K Item that should
@@ -29,7 +32,7 @@ RISK_CATEGORIES = {
     "FX Risk":            {"query":    "foreign currency exchange rate risk hedging",
                            "sections": {"7A": 2, "8": 1}},
     "Interest Rate Risk": {"query":    "interest rate risk sensitivity debt investments",
-                           "sections": {"7A": 2, "8": 1}},
+                           "sections": {"7A": 2, "8": 1, "7": 1}},
     "Operational Risk":   {"query":    "supply chain operational disruption workforce costs",
                            "sections": {"1A": 2, "7": 1}},
 }
@@ -47,7 +50,7 @@ def item_7a_source(vectorstore, ticker):
 def section_quotas(category, item_7a):
     quotas = dict(RISK_CATEGORIES[category]["sections"])
     if "7A" in quotas and item_7a in (SHORT_UNRESOLVED, None):
-        quotas.setdefault("7", FALLBACK_ITEM_7_CHUNKS)
+        quotas["7"] = max(quotas.get("7", 0), FALLBACK_ITEM_7_CHUNKS)
     return quotas
 
 def retrieve(vectorstore, ticker, query, quotas):
@@ -68,14 +71,16 @@ def score_category(category_name, docs):
     context = "\n\n".join(f"[Item {doc.metadata['section']}]\n{doc.page_content}" for doc in docs)
 
     prompt = f"""You are a financial risk analyst.
-Analyze the following text and score the {category_name} on a scale of 0-10.
-0-3 = LOW risk, 4-6 = MEDIUM risk, 7-10 = HIGH risk
+Analyze the following text and score the {category_name} on a scale of 1-10.
+1-3 = LOW risk, 4-6 = MEDIUM risk, 7-10 = HIGH risk
+If the text does not contain enough information to assess this risk, answer
+SCORE: INSUFFICIENT and use REASON to say what is missing.
 
 TEXT:
 {context}
 
 Respond in exactly this format:
-SCORE: [number 0-10]
+SCORE: [number 1-10, or INSUFFICIENT]
 REASON: [one sentence explanation]"""
 
     client   = Groq(api_key=GROQ_API_KEY)
@@ -89,16 +94,19 @@ REASON: [one sentence explanation]"""
     return parse_score_response(response.choices[0].message.content or "")
 
 def parse_score_response(raw):
-    """Return (score, reason). score is None when no valid 0-10 integer is found."""
+    """Return (score, reason). score is None (shown as n/a) when the model answers
+    INSUFFICIENT or no valid 1-10 integer is found."""
     text         = raw.replace("*", "")  # tolerate markdown bold: **SCORE:** 7
-    score_match  = SCORE_LINE.search(text)
     reason_match = REASON_LINE.search(text)
+    reason       = reason_match.group(1).strip() if reason_match else "No reason given"
 
-    score = int(score_match.group(1)) if score_match else None
-    if score is None or not 0 <= score <= 10:
+    if INSUFFICIENT_LINE.search(text):
+        return None, f"Insufficient information: {reason}"
+
+    score_match = SCORE_LINE.search(text)
+    score       = int(score_match.group(1)) if score_match else None
+    if score is None or not MIN_SCORE <= score <= MAX_SCORE:
         return None, "Could not parse model response"
-
-    reason = reason_match.group(1).strip() if reason_match else "No reason given"
     return score, reason
 
 def get_risk_level(score):

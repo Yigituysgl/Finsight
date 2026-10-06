@@ -10,7 +10,7 @@ from risk_scorer import parse_score_response
     ("SCORE: 7/10\nREASON: x", 7),
     ("SCORE: 6.\nREASON: x", 6),
     ("score: 3\nreason: x", 3),
-    ("SCORE: 0\nREASON: x", 0),
+    ("SCORE: 1\nREASON: x", 1),
     ("SCORE: 10\nREASON: x", 10),
 ])
 def test_parses_valid_scores(raw, expected):
@@ -19,6 +19,7 @@ def test_parses_valid_scores(raw, expected):
 
 @pytest.mark.parametrize("raw", [
     "SCORE: 7.5\nREASON: x",           # decimals are rejected, not truncated
+    "SCORE: 0\nREASON: x",             # the scale is 1-10
     "SCORE: 11\nREASON: x",            # out of range
     "SCORE: high\nREASON: x",
     "",                                # empty model response
@@ -28,6 +29,21 @@ def test_unparsable_scores_are_none(raw):
     score, reason = parse_score_response(raw)
     assert score is None
     assert reason == "Could not parse model response"
+
+
+@pytest.mark.parametrize("raw", [
+    "SCORE: INSUFFICIENT\nREASON: The text covers only foreign currency risk.",
+    "**SCORE:** INSUFFICIENT\n**REASON:** The text covers only foreign currency risk.",
+    "score: [insufficient]\nreason: The text covers only foreign currency risk.",
+])
+def test_insufficient_is_none_with_its_reason(raw):
+    assert parse_score_response(raw) == \
+        (None, "Insufficient information: The text covers only foreign currency risk.")
+
+
+def test_insufficient_without_reason():
+    assert parse_score_response("SCORE: INSUFFICIENT") == \
+        (None, "Insufficient information: No reason given")
 
 
 def test_reason_is_extracted():
