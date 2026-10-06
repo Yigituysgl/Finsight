@@ -14,8 +14,12 @@ from config import COLLECTION_NAME, EMBED_MODEL, VECTORSTORE_DIR
 from fetch_filings import cache_path, filing_url, load_filings
 from sections import KEEP, describe_7a, split_sections
 
-CHUNK_SIZE    = 500
-CHUNK_OVERLAP = 50
+# Large enough to keep most financial-statement tables in one chunk, small
+# enough to fit the embedding model: all-MiniLM-L6-v2 reads only the first
+# 256 tokens, and at 1500 characters ~40% of chunks are cut off, which hid
+# Tesla's revenue line from retrieval (scripts/eval_retrieval.py).
+CHUNK_SIZE    = 1000
+CHUNK_OVERLAP = 150
 
 
 def make_splitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP):
