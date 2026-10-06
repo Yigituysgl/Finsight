@@ -62,7 +62,12 @@ def load_filings():
     if not FILINGS_CONFIG.exists():
         sys.exit(f"{FILINGS_CONFIG.name} not found; pin filings first (see --list).")
     with open(FILINGS_CONFIG, "rb") as f:
-        return tomllib.load(f)["filing"]
+        filings = tomllib.load(f)["filing"]
+    # Only original annual reports: amendments (10-K/A) and variants are rejected.
+    for filing in filings:
+        if filing["form"] != "10-K":
+            sys.exit(f"{filing['ticker']}: form {filing['form']!r} is not allowed; only '10-K'.")
+    return filings
 
 
 def recent_10ks(client, cik, limit=5):
