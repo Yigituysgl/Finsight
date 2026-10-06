@@ -19,10 +19,29 @@ def load_vectorstore():
 def has_documents(vectorstore):
     return bool(vectorstore.get(limit=1)["ids"])
 
+SOURCE_FIELDS = ["company", "form", "fiscal_year", "section", "section_title",
+                 "resolved_from", "accession", "source_url"]
+
+def source_label(source):
+    """E.g. "Philip Morris International Inc. · 10-K FY2025 · Item 7A (Item 7, Market Risk)"."""
+    item = f"Item {source['section']}"
+    if source.get("resolved_from"):
+        item += f" ({source['resolved_from']})"
+    return f"{source['company']} · {source['form']} FY{source['fiscal_year']} · {item}"
+
+def unique_sources(docs):
+    """One entry per filing section, in retrieval order."""
+    sources = []
+    for doc in docs:
+        source = {field: doc.metadata.get(field, "") for field in SOURCE_FIELDS}
+        if source not in sources:
+            sources.append(source)
+    return sources
+
 def ask(question, vectorstore):
     docs = vectorstore.similarity_search(question, k=3)
     context = "\n\n".join([doc.page_content for doc in docs])
-    sources  = list(set([doc.metadata.get("source","unknown") for doc in docs]))
+    sources  = unique_sources(docs)
 
     prompt = f"""You are a professional financial analyst AI assistant.
 Use ONLY the context below to answer the question.
@@ -59,5 +78,6 @@ if __name__ == "__main__":
         print(f"\nQ: {q}")
         answer, sources = ask(q, vectorstore)
         print(f"A: {answer}")
-        print(f"Source: {sources}")
+        for source in sources:
+            print(f"Source: {source_label(source)}")
         print("-" * 60)

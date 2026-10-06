@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 sys.path.append(os.path.dirname(__file__))
 
 from config import GROQ_MODEL, VECTORSTORE_DIR
-from rag import load_vectorstore, has_documents, ask
+from rag import load_vectorstore, has_documents, ask, source_label
 from risk_scorer import run_risk_analysis
 
 
@@ -157,7 +157,7 @@ with col_main:
             st.session_state.chat_history.append({
                 "role":    "assistant",
                 "content": answer,
-                "source":  str(sources)
+                "sources": sources
             })
             st.rerun()
     else:
@@ -183,7 +183,7 @@ with col_main:
                 st.session_state.chat_history.append({
                     "role":    "assistant",
                     "content": answer,
-                    "source":  str(sources)
+                    "sources": sources
                 })
                 st.rerun()
 
@@ -195,8 +195,8 @@ with col_main:
         else:
             with st.chat_message("assistant"):
                 st.write(msg["content"])
-                if "source" in msg:
-                    st.caption(f"Source: {msg['source']}")
+                for source in msg.get("sources", []):
+                    st.caption(f"Source: [{source_label(source)}]({source['source_url']})")
 
 with col_right:
     st.subheader("📈 Risk Dashboard")
