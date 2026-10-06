@@ -4,8 +4,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
-PDF_DIR         = "../data"
-VECTORSTORE_DIR = "../vectorstore"
+from config import DATA_DIR, VECTORSTORE_DIR
+
 CHUNK_SIZE      = 500
 CHUNK_OVERLAP   = 50
 EMBED_MODEL = "all-MiniLM-L6-v2"
@@ -51,7 +51,7 @@ def build_vectorstore(chunks):
         texts=texts,
         embedding=embeddings,
         metadatas=metadatas,
-        persist_directory=VECTORSTORE_DIR
+        persist_directory=str(VECTORSTORE_DIR)
     )
     print(f"  Done! Saved to '{VECTORSTORE_DIR}'")
     return vectorstore
@@ -74,7 +74,7 @@ def test_retrieval(vectorstore):
 if __name__ == "__main__":
     print("\n=== FinSight: Day 1 Ingestion Pipeline ===\n")
     print("[1/4] Reading PDFs...")
-    documents = extract_text_from_pdfs(PDF_DIR)
+    documents = extract_text_from_pdfs(DATA_DIR)
     print("\n[2/4] Chunking text...")
     chunks = chunk_documents(documents)
     print("\n[3/4] Building vector store...")

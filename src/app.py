@@ -2,9 +2,7 @@ import os
 import sys
 import streamlit as st
 import plotly.graph_objects as go
-from dotenv import load_dotenv
 
-load_dotenv("../.env")
 sys.path.append(os.path.dirname(__file__))
 
 from ingest import extract_text_from_pdfs, chunk_documents, build_vectorstore

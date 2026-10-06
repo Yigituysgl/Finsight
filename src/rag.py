@@ -1,13 +1,9 @@
-import os
-from dotenv import load_dotenv
 from groq import Groq
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
-load_dotenv("../.env")
+from config import GROQ_API_KEY, VECTORSTORE_DIR
 
-
-VECTORSTORE_DIR = "../vectorstore"
 EMBED_MODEL     = "all-MiniLM-L6-v2"
 GROQ_MODEL      = "llama-3.3-70b-versatile"
 
@@ -15,7 +11,7 @@ def load_vectorstore():
     print("  Loading vector store from disk...")
     embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
     vectorstore = Chroma(
-        persist_directory=VECTORSTORE_DIR,
+        persist_directory=str(VECTORSTORE_DIR),
         embedding_function=embeddings
     )
     print("  Vector store loaded!")
@@ -37,7 +33,7 @@ QUESTION: {question}
 
 Provide a clear, structured answer with specific numbers where available."""
 
-    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+    client = Groq(api_key=GROQ_API_KEY)
     response = client.chat.completions.create(
         model=GROQ_MODEL,
         messages=[{"role": "user", "content": prompt}],
