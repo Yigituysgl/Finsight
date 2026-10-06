@@ -6,6 +6,7 @@
 import json
 import re
 import warnings
+from collections import Counter
 
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 
@@ -32,6 +33,12 @@ BLOCK_TAGS = ["p", "div", "tr", "li", "br", "table",
 CELL_TAGS  = ["td", "th"]
 NOISE_LINE = re.compile(r"^(\d{1,3}|table of contents)$", re.IGNORECASE)
 
+# Running page footers such as "Apple Inc. | 2025 Form 10-K | 20": a label,
+# a pipe and a page number, with the same label on many pages. Lines without
+# the pipe are left alone, since table labels ("2025 2024 2023") also repeat.
+FOOTER_LINE        = re.compile(r"^(?P<label>.+?)\s*\|\s*\d{1,3}$")
+FOOTER_MIN_REPEATS = 5
+
 
 def html_to_lines(html):
     with warnings.catch_warnings():
@@ -49,7 +56,18 @@ def html_to_lines(html):
 
     text  = soup.get_text().replace("\xa0", " ")
     lines = (re.sub(r"\s+", " ", line).strip() for line in text.split("\n"))
-    return [line for line in lines if line and not NOISE_LINE.match(line)]
+    lines = [line for line in lines if line and not NOISE_LINE.match(line)]
+    return strip_page_footers(lines)
+
+
+def strip_page_footers(lines):
+    def footer_label(line):
+        match = FOOTER_LINE.match(line)
+        return match.group("label") if match else None
+
+    counts  = Counter(label for label in map(footer_label, lines) if label)
+    footers = {label for label, n in counts.items() if n >= FOOTER_MIN_REPEATS}
+    return [line for line in lines if footer_label(line) not in footers]
 
 
 def find_headings(lines):

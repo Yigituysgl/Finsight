@@ -1,4 +1,4 @@
-from sections import html_to_lines, split_sections
+from sections import html_to_lines, split_sections, strip_page_footers
 
 BODY = "Body text. " * 60  # long enough to read as a section, not a TOC entry
 
@@ -73,6 +73,24 @@ def test_hidden_xbrl_and_page_numbers_are_dropped():
     lines = html_to_lines(FILING.encode())
     assert "HIDDEN XBRL FACT" not in " ".join(lines)
     assert "42" not in lines
+
+
+def test_repeated_page_footers_are_stripped():
+    lines = []
+    for page in range(1, 7):
+        lines += [f"Paragraph on page {page}.", f"Apple Inc. | 2025 Form 10-K | {page}"]
+    assert strip_page_footers(lines) == [f"Paragraph on page {p}." for p in range(1, 7)]
+
+
+def test_repeated_lines_without_footer_shape_are_kept():
+    # Table headers repeat across pages but have no "label | page" shape.
+    lines = ["2025 2024 2023", "Net sales 100 90 80"] * 6
+    assert strip_page_footers(lines) == lines
+
+
+def test_rare_pipe_lines_are_kept():
+    lines = ["Segment | 12", "Other text"]
+    assert strip_page_footers(lines) == lines
 
 
 def test_no_body_found_returns_nothing():
