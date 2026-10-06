@@ -6,7 +6,6 @@ import plotly.graph_objects as go
 sys.path.append(os.path.dirname(__file__))
 
 from config import GROQ_MODEL, VECTORSTORE_DIR
-from ingest import extract_text_from_pdfs, chunk_documents, build_vectorstore
 from rag import load_vectorstore, has_documents, ask
 from risk_scorer import run_risk_analysis
 
@@ -89,20 +88,6 @@ def get_risk_color(score):
     elif score <= 6: return "medium-risk", "🟡 MEDIUM"
     else:            return "high-risk",   "🔴 HIGH"
 
-def process_uploaded_file(uploaded_file, company_name):
-
-
-    with st.spinner("Creating knowledge base..."):
-        chunks      = chunk_documents(documents)
-        vectorstore = build_vectorstore(chunks)
-
-    st.session_state.vectorstore   = vectorstore
-    st.session_state.company_name  = company_name
-    st.session_state.doc_processed = True
-    st.session_state.chat_history  = []
-    st.session_state.risk_results  = None
-    return vectorstore
-
 
 st.markdown('<p class="main-header">📊 FinSight AI</p>', unsafe_allow_html=True)
 st.markdown(f'<p class="sub-header">Financial Document Intelligence — {GROQ_MODEL} via Groq</p>',
@@ -122,18 +107,7 @@ with col_left:
         placeholder="e.g. Tesla 2024"
     )
 
-    uploaded_file = st.file_uploader(
-        "Upload financial PDF",
-        type=["pdf"],
-        help="Upload any financial report, 10-K, 10-Q, or annual report"
-    )
 
-    if uploaded_file and st.button("Process Document", type="primary"):
-        with st.spinner("Processing..."):
-            process_uploaded_file(uploaded_file, company_name)
-        st.success(f"Document ready!")
-
-    
     if not st.session_state.doc_processed:
         # Loading a missing store would create an empty one on disk,
         # so only load when the directory exists and holds documents.
@@ -144,7 +118,8 @@ with col_left:
             st.session_state.doc_processed = True
             st.info("Existing knowledge base loaded!")
         else:
-            st.warning("Knowledge base is empty. Upload a PDF to get started.")
+            st.warning("Knowledge base is empty. Build it with "
+                       "`python src/fetch_filings.py` and `python src/ingest.py`.")
 
     st.divider()
 
@@ -186,7 +161,7 @@ with col_main:
             })
             st.rerun()
     else:
-        st.info("Upload and process a document to start chatting.")
+        st.info("Build the knowledge base to start chatting.")
 
     
     if st.session_state.doc_processed and not st.session_state.chat_history:
