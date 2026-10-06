@@ -16,8 +16,9 @@ def load_vectorstore():
     print("  Vector store loaded!")
     return vectorstore
 
-def has_documents(vectorstore):
-    return bool(vectorstore.get(limit=1)["ids"])
+def has_documents(vectorstore, ticker=None):
+    where = {"ticker": ticker} if ticker else None
+    return bool(vectorstore.get(where=where, limit=1)["ids"])
 
 SOURCE_FIELDS = ["company", "form", "fiscal_year", "section", "section_title",
                  "resolved_from", "accession", "source_url"]
@@ -38,8 +39,9 @@ def unique_sources(docs):
             sources.append(source)
     return sources
 
-def ask(question, vectorstore):
-    docs = vectorstore.similarity_search(question, k=3)
+def ask(question, vectorstore, ticker):
+    # Retrieve only from the selected company's filing.
+    docs = vectorstore.similarity_search(question, k=3, filter={"ticker": ticker})
     context = "\n\n".join([doc.page_content for doc in docs])
     sources  = unique_sources(docs)
 
@@ -76,7 +78,7 @@ if __name__ == "__main__":
 
     for q in questions:
         print(f"\nQ: {q}")
-        answer, sources = ask(q, vectorstore)
+        answer, sources = ask(q, vectorstore, "AAPL")
         print(f"A: {answer}")
         for source in sources:
             print(f"Source: {source_label(source)}")

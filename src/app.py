@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 sys.path.append(os.path.dirname(__file__))
 
 from config import GROQ_MODEL, VECTORSTORE_DIR
+from fetch_filings import load_filings
 from rag import load_vectorstore, has_documents, ask, source_label
 from risk_scorer import run_risk_analysis
 
@@ -53,8 +54,8 @@ st.markdown("""
 
 if "vectorstore"   not in st.session_state:
     st.session_state.vectorstore   = None
-if "company_name"  not in st.session_state:
-    st.session_state.company_name  = "Company"
+if "filing"        not in st.session_state:
+    st.session_state.filing        = None
 if "chat_history"  not in st.session_state:
     st.session_state.chat_history  = []
 if "risk_results"  not in st.session_state:
@@ -88,6 +89,9 @@ def get_risk_color(score):
     elif score <= 6: return "medium-risk", "🟡 MEDIUM"
     else:            return "high-risk",   "🔴 HIGH"
 
+def filing_label(filing):
+    return f"{filing['company']} ({filing['ticker']}) · {filing['form']} FY{filing['fiscal_year']}"
+
 
 st.markdown('<p class="main-header">📊 FinSight AI</p>', unsafe_allow_html=True)
 st.markdown(f'<p class="sub-header">Financial Document Intelligence — {GROQ_MODEL} via Groq</p>',
@@ -99,14 +103,7 @@ col_left, col_main, col_right = st.columns([1, 2, 1])
 
 
 with col_left:
-    st.subheader("📁 Document")
-
-    company_name = st.text_input(
-        "Company name",
-        value="Apple Q4 2024",
-        placeholder="e.g. Tesla 2024"
-    )
-
+    st.subheader("🏢 Company")
 
     if not st.session_state.doc_processed:
         # Loading a missing store would create an empty one on disk,
@@ -114,12 +111,21 @@ with col_left:
         vectorstore = load_vectorstore() if VECTORSTORE_DIR.exists() else None
         if vectorstore is not None and has_documents(vectorstore):
             st.session_state.vectorstore   = vectorstore
-            st.session_state.company_name  = company_name
             st.session_state.doc_processed = True
-            st.info("Existing knowledge base loaded!")
-        else:
-            st.warning("Knowledge base is empty. Build it with "
-                       "`python src/fetch_filings.py` and `python src/ingest.py`.")
+
+    if st.session_state.doc_processed:
+        # Offer only pinned filings that were actually ingested.
+        filings = [f for f in load_filings()
+                   if has_documents(st.session_state.vectorstore, f["ticker"])]
+        filing = st.selectbox("Filing", filings, format_func=filing_label)
+        if filing != st.session_state.filing:
+            # Answers and scores belong to one company; start fresh on a switch.
+            st.session_state.filing       = filing
+            st.session_state.chat_history = []
+            st.session_state.risk_results = None
+    else:
+        st.warning("Knowledge base is empty. Build it with "
+                   "`python src/fetch_filings.py` and `python src/ingest.py`.")
 
     st.divider()
 
@@ -129,7 +135,8 @@ with col_left:
             with st.spinner("Analyzing risk across 6 categories..."):
                 overall, scores_dict, summary = run_risk_analysis(
                     st.session_state.vectorstore,
-                    company_name=st.session_state.company_name
+                    ticker=st.session_state.filing["ticker"],
+                    company_name=st.session_state.filing["company"]
                 )
                 st.session_state.risk_results = {
                     "overall":     overall,
@@ -147,13 +154,14 @@ with col_main:
 
     
     if st.session_state.doc_processed:
-        user_input = st.chat_input("Ask about the financial document...")
+        user_input = st.chat_input(f"Ask about {st.session_state.filing['company']}'s 10-K...")
         if user_input:
             st.session_state.chat_history.append(
                 {"role": "user", "content": user_input}
             )
             with st.spinner("Thinking..."):
-                answer, sources = ask(user_input, st.session_state.vectorstore)
+                answer, sources = ask(user_input, st.session_state.vectorstore,
+                                      st.session_state.filing["ticker"])
             st.session_state.chat_history.append({
                 "role":    "assistant",
                 "content": answer,
@@ -179,7 +187,8 @@ with col_main:
                     {"role": "user", "content": suggestion}
                 )
                 with st.spinner("Thinking..."):
-                    answer, sources = ask(suggestion, st.session_state.vectorstore)
+                    answer, sources = ask(suggestion, st.session_state.vectorstore,
+                                          st.session_state.filing["ticker"])
                 st.session_state.chat_history.append({
                     "role":    "assistant",
                     "content": answer,

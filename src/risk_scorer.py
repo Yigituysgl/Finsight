@@ -23,9 +23,9 @@ RISK_CATEGORIES = {
     "Guidance Risk":     ["outlook", "forward looking", "uncertainty", "risk factors"]
 }
 
-def score_category(category_name, search_terms, vectorstore):
+def score_category(category_name, search_terms, vectorstore, ticker):
     query   = " ".join(search_terms[:3])
-    docs    = vectorstore.similarity_search(query, k=3)
+    docs    = vectorstore.similarity_search(query, k=3, filter={"ticker": ticker})
     context = "\n\n".join([doc.page_content for doc in docs])
 
     prompt = f"""You are a financial risk analyst.
@@ -67,11 +67,12 @@ def get_risk_level(score):
     elif score <= 6: return "MEDIUM"
     else:            return "HIGH"
 
-def generate_summary(scores_dict, overall_score, vectorstore):
+def generate_summary(scores_dict, overall_score, vectorstore, ticker):
     if overall_score is None:
         return "No risk category could be scored, so no summary was generated."
 
-    docs    = vectorstore.similarity_search("financial performance risk outlook", k=3)
+    docs    = vectorstore.similarity_search("financial performance risk outlook", k=3,
+                                            filter={"ticker": ticker})
     context = "\n\n".join([doc.page_content for doc in docs])
     scores_text = "\n".join([
         f"- {cat}: {score}/10 ({get_risk_level(score)})" if score is not None
@@ -99,13 +100,13 @@ Be specific, use actual numbers from the context."""
     )
     return (response.choices[0].message.content or "").strip()
 
-def run_risk_analysis(vectorstore, company_name="Company"):
+def run_risk_analysis(vectorstore, ticker, company_name):
     print(f"\n=== FinSight Risk Analysis: {company_name} ===\n")
     scores_dict = {}
 
     for category, terms in RISK_CATEGORIES.items():
         print(f"  Scoring {category}...")
-        score, reason         = score_category(category, terms, vectorstore)
+        score, reason         = score_category(category, terms, vectorstore, ticker)
         scores_dict[category] = (score, reason)
 
     # Unparsed categories (score None) are left out of the overall score
@@ -137,7 +138,7 @@ def run_risk_analysis(vectorstore, company_name="Company"):
     print("="*50)
 
     print("\nGenerating executive summary...")
-    summary = generate_summary(scores_dict, overall, vectorstore)
+    summary = generate_summary(scores_dict, overall, vectorstore, ticker)
     print(f"\nEXECUTIVE SUMMARY:\n{summary}")
     print("\n" + "="*50)
 
@@ -145,4 +146,4 @@ def run_risk_analysis(vectorstore, company_name="Company"):
 
 if __name__ == "__main__":
     vectorstore = load_vectorstore()
-    run_risk_analysis(vectorstore, company_name="Apple Q4 2024")
+    run_risk_analysis(vectorstore, ticker="AAPL", company_name="Apple Inc.")
