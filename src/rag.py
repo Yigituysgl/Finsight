@@ -39,14 +39,34 @@ def unique_sources(docs):
             sources.append(source)
     return sources
 
+QA_K        = 3  # best matches anywhere in the selected filing
+QA_ITEM_8_K = 1  # plus the best match from the financial statements
+
+def chunk_key(doc):
+    return (doc.metadata.get("accession"), doc.metadata.get("section"),
+            doc.metadata.get("chunk_index"))
+
+def retrieve_for_question(question, vectorstore, ticker):
+    # Retrieve only from the selected company's filing, and always include
+    # Item 8 so reported figures are in context even when MD&A ranks higher.
+    docs = vectorstore.similarity_search(question, k=QA_K, filter={"ticker": ticker})
+    seen = {chunk_key(doc) for doc in docs}
+    for doc in vectorstore.similarity_search(
+            question, k=QA_ITEM_8_K, filter={"$and": [{"ticker": ticker}, {"section": "8"}]}):
+        if chunk_key(doc) not in seen:
+            docs.append(doc)
+    return docs
+
 def ask(question, vectorstore, ticker):
-    # Retrieve only from the selected company's filing.
-    docs = vectorstore.similarity_search(question, k=3, filter={"ticker": ticker})
+    docs = retrieve_for_question(question, vectorstore, ticker)
     context = "\n\n".join([doc.page_content for doc in docs])
     sources  = unique_sources(docs)
 
     prompt = f"""You are a professional financial analyst AI assistant.
 Use ONLY the context below to answer the question.
+Use figures exactly as they are stated in the context. Never derive a figure by
+calculating it from other figures, rounded or not. If a figure is not stated in
+the context, say that it is not in the provided context.
 If the answer is not in the context, say "I could not find this information in the document."
 
 CONTEXT:
