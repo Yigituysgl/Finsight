@@ -30,7 +30,7 @@ RISK_CATEGORIES = {
     "Legal Risk":         {"query":    "litigation lawsuit regulatory investigation contingencies",
                            "sections": {"3": 2, "8": 1, "1A": 1}},
     "FX Risk":            {"query":    "foreign currency exchange rate risk hedging",
-                           "sections": {"7A": 2, "8": 1}},
+                           "sections": {"7A": 3, "8": 1}},
     "Interest Rate Risk": {"query":    "interest rate risk sensitivity debt investments",
                            "sections": {"7A": 2, "8": 1, "7": 1}},
     "Operational Risk":   {"query":    "supply chain operational disruption workforce costs",

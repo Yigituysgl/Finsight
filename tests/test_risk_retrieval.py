@@ -26,7 +26,7 @@ def test_six_categories_without_guidance_or_combined_market_risk():
 def test_every_category_has_a_primary_and_a_supporting_quota():
     for spec in RISK_CATEGORIES.values():
         quotas = list(spec["sections"].values())
-        assert len(quotas) >= 2 and quotas[0] == 2
+        assert len(quotas) >= 2 and quotas[0] >= 2
 
 
 def test_each_section_is_searched_with_its_own_quota():
@@ -37,8 +37,8 @@ def test_each_section_is_searched_with_its_own_quota():
 
 
 def test_resolved_or_own_7a_reads_no_item_7_for_fx():
-    assert section_quotas("FX Risk", "own") == {"7A": 2, "8": 1}
-    assert section_quotas("FX Risk", "pointer_resolved") == {"7A": 2, "8": 1}
+    assert section_quotas("FX Risk", "own") == {"7A": 3, "8": 1}
+    assert section_quotas("FX Risk", "pointer_resolved") == {"7A": 3, "8": 1}
 
 
 def test_interest_rate_reads_item_7_as_support():
@@ -46,7 +46,7 @@ def test_interest_rate_reads_item_7_as_support():
 
 
 def test_unresolved_7a_pointer_falls_back_to_item_7():
-    assert section_quotas("FX Risk", "short_unresolved") == {"7A": 2, "8": 1, "7": 2}
+    assert section_quotas("FX Risk", "short_unresolved") == {"7A": 3, "8": 1, "7": 2}
     assert section_quotas("Interest Rate Risk", "short_unresolved") == {"7A": 2, "8": 1, "7": 2}
 
 
