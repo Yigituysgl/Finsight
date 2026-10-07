@@ -4,6 +4,7 @@
     python scripts/eval_retrieval.py --chunk-size 1000 --chunk-overlap 150
     python scripts/eval_retrieval.py --retrieval-only         hit checks only, no LLM calls
     python scripts/eval_retrieval.py --repeats 3              repeat the LLM metrics
+    python scripts/eval_retrieval.py --neighbours 1           add the chunk either side of each hit
 
 Builds (or reuses) a separate vector store per setting under data/eval/stores,
 so the app's own store is never touched, then runs the app's retrieval code:
@@ -34,6 +35,7 @@ from langchain_community.vectorstores import Chroma
 from config import COLLECTION_NAME, DATA_DIR, EMBED_MODEL, LLM_TEMPERATURE
 from fetch_filings import cache_path, load_filings
 from ingest import CHUNK_OVERLAP, CHUNK_SIZE, chunk_filing, make_splitter
+import rag
 from rag import ask, retrieve_for_question
 from risk_scorer import (RISK_CATEGORIES, item_7a_source, retrieve,
                          score_categories, section_quotas)
@@ -124,12 +126,15 @@ def main():
     parser.add_argument("--chunk-size",    type=int, default=CHUNK_SIZE)
     parser.add_argument("--chunk-overlap", type=int, default=CHUNK_OVERLAP)
     parser.add_argument("--repeats",       type=int, default=1)
+    parser.add_argument("--neighbours",    type=int, default=rag.NEIGHBOURS,
+                        help="chunks added on each side of a hit (default: the app's)")
     parser.add_argument("--retrieval-only", action="store_true")
     args = parser.parse_args()
     # Model output can contain characters the Windows console codepage lacks.
     sys.stdout.reconfigure(encoding="utf-8")
+    rag.NEIGHBOURS = args.neighbours
 
-    label   = f"{args.chunk_size}_{args.chunk_overlap}"
+    label   = f"{args.chunk_size}_{args.chunk_overlap}_n{args.neighbours}"
     store   = load_or_build_store(args.chunk_size, args.chunk_overlap)
     tickers = [f["ticker"] for f in load_filings()]
     result  = {"setting": label, "temperature": LLM_TEMPERATURE,

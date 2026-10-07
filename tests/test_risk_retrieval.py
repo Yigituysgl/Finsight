@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import rag
+
 from risk_scorer import (RISK_CATEGORIES, describe_read_from, retrieve,
                          score_category, section_quotas)
 
@@ -15,7 +17,19 @@ class StubStore:
         self.calls.append((section, k))
         n = min(k, self.available.get(section, 0))
         return [SimpleNamespace(page_content=f"{section} text",
-                                metadata={"section": section}) for _ in range(n)]
+                                metadata={"accession": "A", "section": section, "chunk_index": i})
+                for i in range(n)]
+
+    def get(self, ids):
+        """Chroma's get by id; a chunk exists when its index is below the section's count."""
+        found = {"documents": [], "metadatas": []}
+        for chunk_id in ids:
+            accession, section, index = chunk_id.split(":")
+            if int(index) < self.available.get(section, 0):
+                found["documents"].append(f"{section} text {index}")
+                found["metadatas"].append({"accession": accession, "section": section,
+                                           "chunk_index": int(index)})
+        return found
 
 
 def test_six_categories_without_guidance_or_combined_market_risk():
@@ -62,3 +76,10 @@ def test_short_section_returns_what_exists():
 
 def test_category_with_no_text_is_not_scored():
     assert score_category("FX Risk", []) == (None, "No text found in the Items this category reads")
+
+
+def test_neighbour_expansion_adds_adjacent_chunks_of_the_same_item(monkeypatch):
+    monkeypatch.setattr(rag, "NEIGHBOURS", 1)
+    store = StubStore({"7A": 3, "8": 5})
+    docs  = retrieve(store, "PM", "fx", {"7A": 1, "8": 1})
+    assert [(d.metadata["section"], d.metadata["chunk_index"]) for d in docs] ==         [("7A", 0), ("7A", 1), ("8", 0), ("8", 1)]
