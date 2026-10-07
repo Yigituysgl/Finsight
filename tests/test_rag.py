@@ -13,12 +13,17 @@ def doc(section, chunk_index, resolved_from=""):
 
 
 class StubStore:
-    def __init__(self, pooled, item_8):
-        self.pooled, self.item_8, self.filters = pooled, item_8, []
+    def __init__(self, pooled, item_8, income=()):
+        self.pooled, self.item_8, self.income, self.filters = pooled, item_8, list(income), []
 
     def similarity_search(self, query, k, filter):
         self.filters.append(filter)
         return list(self.item_8[:k] if "$and" in filter else self.pooled[:k])
+
+    def get(self, where):
+        assert where == {"$and": [{"ticker": "PM"}, {"statement": "income"}]}
+        return {"documents": [d.page_content for d in self.income],
+                "metadatas": [d.metadata for d in self.income]}
 
 
 def test_question_retrieval_adds_an_item_8_chunk():
@@ -50,3 +55,19 @@ def test_sources_are_one_per_section_in_retrieval_order():
     sources = unique_sources([doc("8", 4), doc("7", 1), doc("8", 9)])
     assert [s["section"] for s in sources] == ["8", "7"]
     assert "chunk_index" not in sources[0]
+
+
+def test_income_statement_is_always_included_in_document_order():
+    store = StubStore(pooled=[doc("7", 1)], item_8=[doc("8", 40)],
+                      income=[doc("8", 1), doc("8", 0)])
+    docs  = retrieve_for_question("net revenues?", store, "PM")
+    assert [(d.metadata["section"], d.metadata["chunk_index"]) for d in docs] == \
+        [("7", 1), ("8", 40), ("8", 0), ("8", 1)]
+
+
+def test_income_statement_chunk_already_retrieved_is_not_duplicated():
+    store = StubStore(pooled=[doc("8", 0)], item_8=[doc("8", 0)],
+                      income=[doc("8", 0), doc("8", 1)])
+    docs  = retrieve_for_question("net revenues?", store, "PM")
+    assert [(d.metadata["section"], d.metadata["chunk_index"]) for d in docs] == \
+        [("8", 0), ("8", 1)]

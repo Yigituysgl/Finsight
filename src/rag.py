@@ -1,9 +1,11 @@
 from groq import Groq
+from langchain_core.documents import Document
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
 from config import (COLLECTION_NAME, EMBED_MODEL, GROQ_API_KEY, GROQ_MODEL,
                     LLM_TEMPERATURE, VECTORSTORE_DIR)
+from sections import INCOME
 
 def load_vectorstore():
     print("  Loading vector store from disk...")
@@ -46,16 +48,29 @@ def chunk_key(doc):
     return (doc.metadata.get("accession"), doc.metadata.get("section"),
             doc.metadata.get("chunk_index"))
 
+def income_statement(vectorstore, ticker):
+    """The filing's income-statement chunks, in document order."""
+    found = vectorstore.get(where={"$and": [{"ticker": ticker}, {"statement": INCOME}]})
+    docs  = [Document(page_content=text, metadata=metadata)
+             for text, metadata in zip(found["documents"], found["metadatas"])]
+    return sorted(docs, key=lambda doc: doc.metadata["chunk_index"])
+
 def retrieve_for_question(question, vectorstore, ticker):
     # Retrieve only from the selected company's filing, and always include
     # Item 8 so reported figures are in context even when MD&A ranks higher.
+    # The income statement is always included too: otherwise a note table
+    # with a similar line (e.g. equity investees' "Consolidated net income")
+    # can be the only source of a headline figure.
     docs = vectorstore.similarity_search(question, k=QA_K, filter={"ticker": ticker})
-    seen = {chunk_key(doc) for doc in docs}
-    for doc in vectorstore.similarity_search(
-            question, k=QA_ITEM_8_K, filter={"$and": [{"ticker": ticker}, {"section": "8"}]}):
+    docs += vectorstore.similarity_search(
+        question, k=QA_ITEM_8_K, filter={"$and": [{"ticker": ticker}, {"section": "8"}]})
+    docs += income_statement(vectorstore, ticker)
+    unique, seen = [], set()
+    for doc in docs:
         if chunk_key(doc) not in seen:
-            docs.append(doc)
-    return docs
+            unique.append(doc)
+            seen.add(chunk_key(doc))
+    return unique
 
 def ask(question, vectorstore, ticker):
     docs = retrieve_for_question(question, vectorstore, ticker)
