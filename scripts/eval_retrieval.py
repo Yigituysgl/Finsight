@@ -11,8 +11,12 @@ so the app's own store is never touched, then runs the app's retrieval code:
   * hit checks: does retrieval return the chunk holding a known passage?
       - Tesla Q&A: the income-statement line with total revenues
       - PM FX risk: the value-at-risk table in Item 7A
+      - the app's revenue and net-income questions, for each company: the
+        income-statement lines with total revenue and with net income
+        attributable to the company itself
   * LLM metrics (sampled at the app's LLM_TEMPERATURE):
       - the Tesla revenue answer, and whether it states both reported figures
+      - the answers to the app's revenue and net-income questions
       - the PM FX risk score
       - how many of the 24 risk categories (4 filings x 6) come back n/a
 
@@ -52,6 +56,24 @@ TESLA_PASSAGES = ["Total revenues 94,827 97,690",
 PM_PASSAGES    = ["Foreign currency rates $97 $152 $197 $97",
                   "Foreign currency rates | At December 31, 2025: $97 | Average: $152 | High: $197 | Low: $97"]
 
+# The app's suggested revenue and net-income questions, and for each company
+# the income-statement lines the answers must rest on: total revenue, and net
+# income attributable to the company itself, not to equity-method investees
+# or noncontrolling interests.
+QA_QUESTIONS = {"revenue":    "What was the total revenue?",
+                "net_income": "How did net income change year over year?"}
+INCOME_STATEMENT_PASSAGES = {
+    "AAPL": {"revenue":    "Total net sales | September 27, 2025: 416,161 | September 28, 2024: 391,035",
+             "net_income": "Net income | September 27, 2025: $112,010 | September 28, 2024: $93,736"},
+    "TSLA": {"revenue":    "Total revenues | 2025: 94,827 | 2024: 97,690",
+             "net_income": "Net income attributable to common stockholders | 2025: $3,794 | 2024: $7,091"},
+    "KO":   {"revenue":    "Net Operating Revenues | 2025: $47,941 | 2024: $47,061",
+             "net_income": "Net Income Attributable to Shareowners of The Coca-Cola Company"
+                           " | 2025: $13,107 | 2024: $10,631"},
+    "PM":   {"revenue":    "Net revenues 1 & 2 (Notes 5 & 11) | 2025: $40,648 | 2024: $37,878",
+             "net_income": "Net earnings attributable to PMI | 2025: $11,348 | 2024: $7,057"},
+}
+
 
 def normalise(text):
     return re.sub(r"\s+", " ", text)
@@ -76,7 +98,8 @@ def load_or_build_store(chunk_size, chunk_overlap):
         texts, metadatas, ids = texts + t, metadatas + m, ids + i
 
     # Keyed by the chunks themselves, so a parser change never reuses a stale store.
-    digest     = hashlib.sha256("\x00".join(ids + texts).encode("utf-8")).hexdigest()[:10]
+    keyed      = ids + texts + [json.dumps(m, sort_keys=True) for m in metadatas]
+    digest     = hashlib.sha256("\x00".join(keyed).encode("utf-8")).hexdigest()[:10]
     store_dir  = EVAL_DIR / "stores" / f"{chunk_size}_{chunk_overlap}_{digest}"
     embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
     store      = Chroma(collection_name=COLLECTION_NAME, embedding_function=embeddings,
@@ -95,14 +118,23 @@ def check_retrieval(store):
     tesla_docs = retrieve_for_question(TESLA_QUESTION, store, "TSLA")
     pm_docs    = retrieve(store, "PM", RISK_CATEGORIES["FX Risk"]["query"],
                           section_quotas("FX Risk", item_7a_source(store, "PM")))
-    return {
+    checks = {
         "tesla_revenue": {"hit": hits(tesla_docs, TESLA_PASSAGES), "retrieved": describe(tesla_docs)},
         "pm_fx":         {"hit": hits(pm_docs, PM_PASSAGES),       "retrieved": describe(pm_docs)},
     }
+    for ticker, passages in INCOME_STATEMENT_PASSAGES.items():
+        for name, question in QA_QUESTIONS.items():
+            docs = retrieve_for_question(question, store, ticker)
+            checks[f"{ticker}_{name}"] = {"hit": hits(docs, [passages[name]]),
+                                          "retrieved": describe(docs)}
+    return checks
 
 
 def run_llm_metrics(store, tickers):
     answer, _ = ask(TESLA_QUESTION, store, "TSLA")
+    qa        = {ticker: {name: ask(question, store, ticker)[0]
+                          for name, question in QA_QUESTIONS.items()}
+                 for ticker in tickers}
     scores    = {}
     for ticker in tickers:
         scored, read_from = score_categories(store, ticker)
@@ -113,6 +145,7 @@ def run_llm_metrics(store, tickers):
     return {
         "tesla_answer":       answer,
         "tesla_figures_found": {f: f in answer for f in TESLA_FIGURES},
+        "qa":                 qa,
         "pm_fx":              scores["PM"]["FX Risk"],
         "n_a":                n_a,
         "scores":             scores,
@@ -146,13 +179,16 @@ def main():
 
     print(f"\n=== {label} (temperature {LLM_TEMPERATURE}) ===")
     for name, check in result["retrieval"].items():
-        print(f"{name:14} hit: {check['hit'] or 'MISS'}   retrieved: {check['retrieved']}")
+        print(f"{name:16} hit: {check['hit'] or 'MISS'}   retrieved: {check['retrieved']}")
     for n, run in enumerate(result["runs"], 1):
         figures = ", ".join(f"{f} {'yes' if ok else 'no'}" for f, ok in run["tesla_figures_found"].items())
         print(f"\nRun {n}: Tesla figures stated: {figures}")
         print(f"  Tesla answer: {run['tesla_answer']}")
         print(f"  PM FX score:  {run['pm_fx']['score'] or 'n/a'}  ({run['pm_fx']['reason']})")
         print(f"  n/a: {len(run['n_a'])}/{len(tickers) * len(RISK_CATEGORIES)}  {run['n_a']}")
+        for ticker, answers in run["qa"].items():
+            for name, qa_answer in answers.items():
+                print(f"\n  {ticker} {QA_QUESTIONS[name]}\n{qa_answer}")
     print(f"\nSaved {out}")
 
 
