@@ -1,4 +1,5 @@
-from sections import html_to_lines, split_sections, strip_page_footers
+from sections import (BALANCE_SHEET, CASH_FLOW, INCOME, html_to_lines, split_sections,
+                      statement_parts, strip_page_footers)
 
 BODY = "Body text. " * 60  # long enough to read as a section, not a TOC entry
 
@@ -201,3 +202,53 @@ def test_header_dollar_and_percent_columns_stay_separate():
 def test_table_without_figures_is_left_as_text():
     html = "<table><tr><td>Name</td><td>Title</td></tr><tr><td>Jane Doe</td><td>Director</td></tr></table>"
     assert html_to_lines(html.encode()) == ["Name Title", "Jane Doe Director"]
+
+
+ITEM_8 = "\n".join([
+    "Index to Consolidated Financial Statements",
+    "Consolidated Statements of Operations | Page: 50",
+    "Report of Independent Registered Public Accounting Firm",
+    "We have audited the accompanying consolidated balance sheets.",
+    "CONSOLIDATED STATEMENTS OF OPERATIONS",
+    "Total revenues | 2025: 94,827 | 2024: 97,690",
+    "See accompanying Notes to Consolidated Financial Statements.",
+    "Consolidated Statements of Comprehensive Income",
+    "Comprehensive income | 2025: 4,825",
+    "Consolidated Balance Sheets",
+    "Total assets | 2025: 137,806",
+    "Consolidated Statements of Cash Flows",
+    "Net cash provided by operating activities | 2025: 14,747",
+    "CONSOLIDATED STATEMENTS OF SHAREOWNERS’ EQUITY",
+    "Balance at end of year | 2025: 1,000",
+    "Notes to Consolidated Financial Statements",
+    "Note 1. The consolidated statements of operations include all subsidiaries.",
+])
+
+
+def test_item_8_primary_statements_are_separate_parts():
+    parts = statement_parts({"section": "8", "text": ITEM_8})
+    assert [kind for kind, _ in parts] == ["", INCOME, "", BALANCE_SHEET, CASH_FLOW, ""]
+    assert parts[1][1] == "\n".join(ITEM_8.split("\n")[4:7])
+    assert "\n".join(text for _, text in parts) == ITEM_8
+
+
+def test_index_entries_and_sentences_naming_a_statement_are_not_headings():
+    parts = statement_parts({"section": "8", "text": ITEM_8})
+    assert parts[0][1].startswith("Index to Consolidated Financial Statements")
+    assert parts[0][1].endswith("consolidated balance sheets.")
+    assert parts[-1][1].startswith("CONSOLIDATED STATEMENTS OF SHAREOWNERS’ EQUITY")
+    assert parts[-1][1].endswith("include all subsidiaries.")
+
+
+def test_statement_names_used_by_other_filers_are_recognised():
+    for heading, kind in [("Consolidated Statements of Earnings", INCOME),
+                          ("CONSOLIDATED STATEMENTS OF INCOME", INCOME),
+                          ("Consolidated Statements of Financial Position", BALANCE_SHEET),
+                          ("Consolidated Statements of Comprehensive Earnings", "")]:
+        parts = statement_parts({"section": "8", "text": f"Intro\n{heading}\nRow | 2025: 1"})
+        assert [k for k, _ in parts] == (["", kind] if kind else [""])
+
+
+def test_statement_headings_outside_item_8_are_ignored():
+    text = "Consolidated Statements of Operations\nRevenue grew."
+    assert statement_parts({"section": "7", "text": text}) == [("", text)]

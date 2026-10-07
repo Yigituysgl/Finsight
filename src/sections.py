@@ -65,6 +65,20 @@ SUFFIXES = {")", "%", ")%", "%)"}
 # How each section's text was obtained (stored as chunk metadata).
 OWN, POINTER_RESOLVED, SHORT_UNRESOLVED = "own", "pointer_resolved", "short_unresolved"
 
+# Item 8's primary financial statements, recognised by their headings on a
+# line of their own ("Consolidated Statements of Earnings", "CONSOLIDATED
+# BALANCE SHEETS"). Index entries carry a page number and do not match. A
+# statement runs to the next statement heading or the notes.
+INCOME, BALANCE_SHEET, CASH_FLOW = "income", "balance_sheet", "cash_flow"
+STATEMENT_HEADING = re.compile(r"^consolidated (?P<name>statements? of [^|.:]+|balance sheets?)$",
+                               re.IGNORECASE)
+NOTES_HEADING     = re.compile(r"^notes to (the )?consolidated financial statements$", re.IGNORECASE)
+STATEMENT_KINDS   = [
+    (INCOME,        re.compile(r"statements? of (operations|income|earnings)", re.IGNORECASE)),
+    (BALANCE_SHEET, re.compile(r"balance sheets?|statements? of financial position", re.IGNORECASE)),
+    (CASH_FLOW,     re.compile(r"statements? of cash flows?", re.IGNORECASE)),
+]
+
 
 def is_bold(tag):
     return tag.name in ("b", "strong") or bool(BOLD_STYLE.search(tag.get("style", "")))
@@ -291,6 +305,30 @@ def split_sections(html):
     return sections
 
 
+def statement_kind(line):
+    """INCOME, BALANCE_SHEET or CASH_FLOW for a primary statement heading, "" for
+    any other statement or the notes heading, None for every other line."""
+    match = STATEMENT_HEADING.match(line)
+    if match:
+        return next((kind for kind, name in STATEMENT_KINDS
+                     if name.fullmatch(match.group("name"))), "")
+    return "" if NOTES_HEADING.match(line) else None
+
+
+def statement_parts(section):
+    """Return the section's text as [(statement, text)]. In Item 8 each primary
+    statement is its own part; all other text has statement ""."""
+    if section["section"] != "8":
+        return [("", section["text"])]
+    parts = [["", []]]
+    for line in section["text"].split("\n"):
+        kind = statement_kind(line)
+        if kind is not None and (kind or parts[-1][0]):
+            parts.append([kind, []])
+        parts[-1][1].append(line)
+    return [(kind, "\n".join(lines)) for kind, lines in parts if lines]
+
+
 def describe_7a(section):
     if section["content_source"] == POINTER_RESOLVED:
         return f"pointer resolved to {section['resolved_from']}"
@@ -316,6 +354,11 @@ def main():
         item_7a = next((s for s in sections if s["section"] == "7A"), None)
         if item_7a:
             print(f"  7A path: {describe_7a(item_7a)}")
+        item_8 = next((s for s in sections if s["section"] == "8"), None)
+        if item_8:
+            statements = [f"{kind} {len(text):,} chars"
+                          for kind, text in statement_parts(item_8) if kind]
+            print(f"  8 statements: {', '.join(statements) or 'none found'}")
 
 
 if __name__ == "__main__":

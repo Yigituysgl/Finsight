@@ -12,7 +12,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 
 from config import COLLECTION_NAME, EMBED_MODEL, VECTORSTORE_DIR
 from fetch_filings import cache_path, filing_url, load_filings
-from sections import KEEP, describe_7a, split_sections
+from sections import KEEP, describe_7a, split_sections, statement_parts
 
 # Large enough to keep most financial-statement tables in one chunk, small
 # enough to fit the embedding model: all-MiniLM-L6-v2 reads only the first
@@ -31,10 +31,14 @@ def make_splitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP):
 
 
 def chunk_filing(filing, sections, splitter):
-    """Return (texts, metadatas, ids); every chunk carries its filing and section."""
+    """Return (texts, metadatas, ids); every chunk carries its filing and section.
+    Each primary financial statement is chunked on its own, so no chunk mixes
+    it with other text, and its chunks are tagged with the statement."""
     texts, metadatas, ids = [], [], []
     for section in sections:
-        for i, chunk in enumerate(splitter.split_text(section["text"])):
+        chunks = [(statement, chunk) for statement, text in statement_parts(section)
+                  for chunk in splitter.split_text(text)]
+        for i, (statement, chunk) in enumerate(chunks):
             texts.append(chunk)
             metadatas.append({
                 "ticker":         filing["ticker"],
@@ -49,6 +53,7 @@ def chunk_filing(filing, sections, splitter):
                 "section_title":  section["title"],
                 "content_source": section["content_source"],
                 "resolved_from":  section["resolved_from"],
+                "statement":      statement,
                 "chunk_index":    i,
             })
             # Stable IDs: re-ingesting the same pins yields the same store.
