@@ -82,6 +82,7 @@ Use ONLY the context below to answer the question.
 Use figures exactly as they are stated in the context. Never derive a figure by
 calculating it from other figures, rounded or not. If a figure is not stated in
 the context, say that it is not in the provided context.
+When the answer covers several years, label each figure with its fiscal year.
 If the answer is not in the context, say "I could not find this information in the document."
 
 CONTEXT:
