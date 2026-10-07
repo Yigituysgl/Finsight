@@ -72,17 +72,22 @@ def retrieve_for_question(question, vectorstore, ticker):
             seen.add(chunk_key(doc))
     return unique
 
-def ask(question, vectorstore, ticker):
-    docs = retrieve_for_question(question, vectorstore, ticker)
-    context = "\n\n".join([doc.page_content for doc in docs])
-    sources  = unique_sources(docs)
-
-    prompt = f"""You are a professional financial analyst AI assistant.
+def qa_prompt(context, question):
+    return f"""You are a professional financial analyst AI assistant.
 Use ONLY the context below to answer the question.
 Use figures exactly as they are stated in the context. Never derive a figure by
 calculating it from other figures, rounded or not. If a figure is not stated in
 the context, say that it is not in the provided context.
 When the answer covers several years, label each figure with its fiscal year.
+For net income, report the figure attributable to the company itself (the
+headline figure, the basis of earnings per share): the income-statement line
+containing "attributable to" the company or its common stockholders or
+shareowners, e.g. "Net income attributable to common stockholders",
+"Net Income Attributable to Shareowners of The Coca-Cola Company",
+"Net earnings attributable to PMI". Do not report the plain "Net income" or
+"Net earnings" line above it as net income when such a line exists; that line
+includes noncontrolling interests and may only be mentioned as a clearly
+labelled secondary figure.
 If the answer is not in the context, say "I could not find this information in the document."
 
 CONTEXT:
@@ -91,6 +96,12 @@ CONTEXT:
 QUESTION: {question}
 
 Provide a clear, structured answer with specific numbers where available."""
+
+def ask(question, vectorstore, ticker):
+    docs = retrieve_for_question(question, vectorstore, ticker)
+    context = "\n\n".join([doc.page_content for doc in docs])
+    sources  = unique_sources(docs)
+    prompt   = qa_prompt(context, question)
 
     client = Groq(api_key=GROQ_API_KEY)
     response = client.chat.completions.create(

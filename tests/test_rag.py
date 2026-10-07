@@ -1,6 +1,7 @@
+import re
 from types import SimpleNamespace
 
-from rag import retrieve_for_question, source_label, unique_sources
+from rag import qa_prompt, retrieve_for_question, source_label, unique_sources
 
 
 def doc(section, chunk_index, resolved_from=""):
@@ -71,3 +72,24 @@ def test_income_statement_chunk_already_retrieved_is_not_duplicated():
     docs  = retrieve_for_question("net revenues?", store, "PM")
     assert [(d.metadata["section"], d.metadata["chunk_index"]) for d in docs] == \
         [("8", 0), ("8", 1)]
+
+
+def prompt_text():
+    return re.sub(r"\s+", " ", qa_prompt("CONTEXT TEXT", "How did net income change?"))
+
+
+def test_prompt_asks_for_net_income_attributable_to_the_company():
+    prompt = prompt_text()
+    assert 'containing "attributable to" the company or its common stockholders or shareowners' in prompt
+    for line in ['"Net income attributable to common stockholders"',
+                 '"Net Income Attributable to Shareowners of The Coca-Cola Company"',
+                 '"Net earnings attributable to PMI"']:
+        assert line in prompt
+    assert "includes noncontrolling interests and may only be mentioned as a clearly labelled secondary figure" in prompt
+
+
+def test_prompt_keeps_figure_rules_and_fills_in_context_and_question():
+    prompt = prompt_text()
+    assert "Never derive a figure" in prompt
+    assert "label each figure with its fiscal year" in prompt
+    assert "CONTEXT: CONTEXT TEXT QUESTION: How did net income change?" in prompt
