@@ -19,6 +19,7 @@ so the app's own store is never touched, then runs the app's retrieval code:
 Each run is written to data/eval/results as JSON.
 """
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -44,19 +45,22 @@ TESLA_QUESTION = "What were Tesla's total revenues in fiscal 2025 and fiscal 202
 TESLA_FIGURES  = ["94,827", "97,690"]  # $M, FY2025 and FY2024, Item 8
 
 # Passages a correct retrieval must return, matched with whitespace collapsed
-# so they are found whatever the chunk boundaries are.
-TESLA_PASSAGE = "Total revenues 94,827 97,690"
-PM_PASSAGE    = "Foreign currency rates $97 $152 $197 $97"
+# so they are found whatever the chunk boundaries are. Each passage is given
+# in the plain table text and in the row-per-line format with column headers.
+TESLA_PASSAGES = ["Total revenues 94,827 97,690",
+                  "Total revenues | 2025: 94,827 | 2024: 97,690"]
+PM_PASSAGES    = ["Foreign currency rates $97 $152 $197 $97",
+                  "Foreign currency rates | At December 31, 2025: $97 | Average: $152 | High: $197 | Low: $97"]
 
 
 def normalise(text):
     return re.sub(r"\s+", " ", text)
 
 
-def hits(docs, passage):
-    """(section, chunk_index) of each retrieved chunk that contains the passage."""
-    return [(d.metadata["section"], d.metadata["chunk_index"])
-            for d in docs if passage in normalise(d.page_content)]
+def hits(docs, passages):
+    """(section, chunk_index) of each retrieved chunk that contains a passage."""
+    return [(d.metadata["section"], d.metadata["chunk_index"]) for d in docs
+            if any(p in normalise(d.page_content) for p in passages)]
 
 
 def describe(docs):
@@ -64,7 +68,16 @@ def describe(docs):
 
 
 def load_or_build_store(chunk_size, chunk_overlap):
-    store_dir  = EVAL_DIR / "stores" / f"{chunk_size}_{chunk_overlap}"
+    splitter = make_splitter(chunk_size, chunk_overlap)
+    texts, metadatas, ids = [], [], []
+    for filing in load_filings():
+        sections = split_sections(cache_path(filing).read_bytes())
+        t, m, i  = chunk_filing(filing, sections, splitter)
+        texts, metadatas, ids = texts + t, metadatas + m, ids + i
+
+    # Keyed by the chunks themselves, so a parser change never reuses a stale store.
+    digest     = hashlib.sha256("\x00".join(ids + texts).encode("utf-8")).hexdigest()[:10]
+    store_dir  = EVAL_DIR / "stores" / f"{chunk_size}_{chunk_overlap}_{digest}"
     embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
     store      = Chroma(collection_name=COLLECTION_NAME, embedding_function=embeddings,
                         persist_directory=str(store_dir))
@@ -73,12 +86,6 @@ def load_or_build_store(chunk_size, chunk_overlap):
         return store
 
     print(f"Building store {store_dir} ...")
-    splitter = make_splitter(chunk_size, chunk_overlap)
-    texts, metadatas, ids = [], [], []
-    for filing in load_filings():
-        sections = split_sections(cache_path(filing).read_bytes())
-        t, m, i  = chunk_filing(filing, sections, splitter)
-        texts, metadatas, ids = texts + t, metadatas + m, ids + i
     store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
     print(f"  {len(texts):,} chunks")
     return store
@@ -89,8 +96,8 @@ def check_retrieval(store):
     pm_docs    = retrieve(store, "PM", RISK_CATEGORIES["FX Risk"]["query"],
                           section_quotas("FX Risk", item_7a_source(store, "PM")))
     return {
-        "tesla_revenue": {"hit": hits(tesla_docs, TESLA_PASSAGE), "retrieved": describe(tesla_docs)},
-        "pm_fx":         {"hit": hits(pm_docs, PM_PASSAGE),       "retrieved": describe(pm_docs)},
+        "tesla_revenue": {"hit": hits(tesla_docs, TESLA_PASSAGES), "retrieved": describe(tesla_docs)},
+        "pm_fx":         {"hit": hits(pm_docs, PM_PASSAGES),       "retrieved": describe(pm_docs)},
     }
 
 
@@ -122,7 +129,7 @@ def main():
     # Model output can contain characters the Windows console codepage lacks.
     sys.stdout.reconfigure(encoding="utf-8")
 
-    label  = f"{args.chunk_size}_{args.chunk_overlap}"
+    label   = f"{args.chunk_size}_{args.chunk_overlap}"
     store   = load_or_build_store(args.chunk_size, args.chunk_overlap)
     tickers = [f["ticker"] for f in load_filings()]
     result  = {"setting": label, "temperature": LLM_TEMPERATURE,

@@ -62,7 +62,7 @@ def test_line_start_cross_reference_stays_in_section():
 
 
 def test_section_ends_at_next_heading_including_unkept_items():
-    assert sections_by_item()["8"]["text"] == "Total net sales $ 391,035"
+    assert sections_by_item()["8"]["text"] == "Total net sales | $391,035"
 
 
 def test_pointer_section_is_kept_as_is():
@@ -121,7 +121,7 @@ def test_7a_pointer_resolves_to_named_item_7_subsection():
     # Runs past the smaller 10pt caption, stops at the next 12pt heading.
     assert item_7a["text"] == ("Value at Risk - We use a value at risk computation.\n"
                                "Fair Value Impact\n"
-                               "Foreign currency rates $97")
+                               "Foreign currency rates | $97")
 
 
 def test_unresolvable_7a_pointer_is_flagged_and_kept():
@@ -139,11 +139,65 @@ def test_7a_with_own_content_is_not_treated_as_pointer():
 
 
 def test_bold_markers_leave_no_extra_whitespace():
-    html = '<table><tr><td><span style="font-weight:700">Total</span></td><td>15,777</td></tr></table>'
-    assert html_to_lines(html.encode()) == ["Total 15,777"]
+    html = '<table><tr><td><span style="font-weight:700">Total</span></td><td>assets</td></tr></table>'
+    assert html_to_lines(html.encode()) == ["Total assets"]
 
 
 def test_no_body_found_returns_nothing():
     toc_only = "<table><tr><td>Item 1.</td><td>Business</td></tr>" \
                "<tr><td>Item 1A.</td><td>Risk Factors</td></tr></table>"
     assert split_sections(toc_only.encode()) == []
+
+
+def var_block(year, fx, rates):
+    """One year of PM's value-at-risk table, laid out as in its 10-K: 3-column
+    cells, labels wrapped in <div>, empty spacer cells and rows."""
+    cell = '<td colspan="3"><div>{}</div></td>'
+    row  = "<tr>" + cell * 8 + "</tr>"
+    return (
+        '<tr><td colspan="3"></td><td colspan="21"><div>Fair Value Impact</div></td></tr>'
+        + row.format("(in millions)", f"At December 31, {year}", "", "Average", "", "High", "", "Low")
+        + row.format("Instruments sensitive to:", *[""] * 7)
+        + row.format("Foreign currency rates", fx[0], "", fx[1], "", fx[2], "", fx[3])
+        + row.format(*[""] * 8)
+        + row.format("Interest rates", rates[0], "", rates[1], "", rates[2], "", rates[3]))
+
+
+def test_value_at_risk_rows_keep_their_column_headers():
+    html = ("<table>" + "<tr>" + "<td></td>" * 24 + "</tr>"
+            + var_block(2025, ["$97", "$152", "$197", "$97"], ["$135", "$191", "$239", "$135"])
+            + var_block(2024, ["$130", "$92", "$130", "$69"], ["$221", "$233", "$272", "$200"])
+            + "</table>")
+    lines = html_to_lines(html.encode())
+    assert "Foreign currency rates | At December 31, 2025: $97 | Average: $152 | High: $197 | Low: $97" in lines
+    assert "Interest rates | At December 31, 2025: $135 | Average: $191 | High: $239 | Low: $135" in lines
+    # The second block's headers replace the first block's.
+    assert "Foreign currency rates | At December 31, 2024: $130 | Average: $92 | High: $130 | Low: $69" in lines
+
+
+def test_statement_rows_merge_currency_and_negative_cells_under_year_headers():
+    html = """<table>
+      <tr><td></td><td colspan="6">Year Ended December 31,</td></tr>
+      <tr><td></td><td colspan="2">2025</td><td colspan="2">2024</td><td colspan="2">2023</td></tr>
+      <tr><td>Revenues</td></tr>
+      <tr><td>Total revenues</td><td>$</td><td>94,827</td><td>$</td><td>97,690</td><td>$</td><td>96,773</td></tr>
+      <tr><td>Interest expense</td><td>(</td><td>338 )</td><td>(</td><td>350)</td><td>(</td><td>156 )</td></tr>
+    </table>"""
+    lines = html_to_lines(html.encode())
+    assert lines[:3] == ["Year Ended December 31,", "2025 | 2024 | 2023", "Revenues"]
+    assert lines[3] == "Total revenues | 2025: $94,827 | 2024: $97,690 | 2023: $96,773"
+    assert lines[4] == "Interest expense | 2025: (338) | 2024: (350) | 2023: (156)"
+
+
+def test_header_dollar_and_percent_columns_stay_separate():
+    html = """<table>
+      <tr><td>(Dollars in millions)</td><td colspan="2">2025</td><td>$</td><td>%</td></tr>
+      <tr><td>Total revenues</td><td>$</td><td>94,827</td><td>$(2,863)</td><td>(3)%</td></tr>
+    </table>"""
+    assert html_to_lines(html.encode())[1] == \
+        "Total revenues | 2025: $94,827 | $: $(2,863) | %: (3)%"
+
+
+def test_table_without_figures_is_left_as_text():
+    html = "<table><tr><td>Name</td><td>Title</td></tr><tr><td>Jane Doe</td><td>Director</td></tr></table>"
+    assert html_to_lines(html.encode()) == ["Name Title", "Jane Doe Director"]

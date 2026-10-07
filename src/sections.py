@@ -53,6 +53,15 @@ POINTER_MAX_CHARS = 500
 POINTER = re.compile(r"included in Item\s*7\s*,\s*[\"“]?(?P<name>[^\"”.]+?)[\"”]?\s*\.?$",
                      re.IGNORECASE)
 
+# Financial tables are written one row per line, each value labelled with its
+# column headers: "Foreign currency rates | At December 31, 2025: $97 | Average: $152".
+# Otherwise block tags inside cells split a label from its values, and the
+# headers end up lines away from the numbers they belong to.
+NUMBER   = re.compile(r"^\$?\(?\$?-?\d[\d,]*(\.\d+)?\)?%?\)?$|^[—–-]$")
+YEAR     = re.compile(r"^(19|20)\d\d$")
+PREFIXES = {"$", "(", "$("}
+SUFFIXES = {")", "%", ")%", "%)"}
+
 # How each section's text was obtained (stored as chunk metadata).
 OWN, POINTER_RESOLVED, SHORT_UNRESOLVED = "own", "pointer_resolved", "short_unresolved"
 
@@ -69,6 +78,79 @@ def font_size(tag):
     return "0"
 
 
+def colspan(cell):
+    try:
+        return max(1, int(cell.get("colspan", 1)))
+    except ValueError:
+        return 1
+
+
+def table_rows(table):
+    """Return each row's non-empty cells as [start_column, end_column, text]."""
+    rows = []
+    for tr in table.find_all("tr"):
+        cells, column = [], 0
+        for cell in tr.find_all(CELL_TAGS):
+            span = colspan(cell)
+            text = re.sub(r"\s+", " ", cell.get_text(" ").replace("\xa0", " ")).strip()
+            text = re.sub(r"(?<=[$(])\s+|\s+(?=[)%])", "", text)  # "( 338 )" -> "(338)"
+            if text:
+                cells.append([column, column + span, text])
+            column += span
+        if cells:
+            rows.append(merge_affixes(cells))
+    return rows
+
+
+def merge_affixes(cells):
+    """Join "$", "(" and ")", "%" cells to the number they belong to. In a
+    header row ("$  %") they stay separate cells."""
+    merged = []
+    for cell in cells:
+        if merged and cell[2] in SUFFIXES and re.search(r"[\d)]$", merged[-1][2]):
+            merged[-1][1:] = [cell[1], merged[-1][2] + cell[2]]
+        elif merged and merged[-1][2] in PREFIXES and re.match(r"[\d(-]", cell[2]):
+            merged[-1] = [cell[0], cell[1], merged[-1][2] + cell[2]]
+        else:
+            merged.append(cell)
+    return merged
+
+
+def render_table(rows):
+    """Return the table as lines, or None if it holds no row of figures."""
+    if any(HEADING.match(text) for row in rows for _, _, text in row):
+        return None  # Item headings laid out in a table are left to find_headings
+    lines, header, header_done, has_data = [], [], False, False
+    for row in rows:
+        label  = row[0][2] if row[0][0] == 0 and not NUMBER.match(row[0][2]) else ""
+        values = row[1:] if label else row
+        numbers = [text for _, _, text in values if NUMBER.match(text)]
+        # A row whose only numbers are years ("2025 2024 2023") is a header.
+        if numbers and not all(YEAR.match(n) for n in numbers):
+            has_data, header_done = True, True
+            lines.append(" | ".join([label] * bool(label) + [
+                f"{heading}: {text}" if heading else text
+                for heading, text in labelled(values, header)]))
+        elif values:
+            if header_done:
+                header, header_done = [], False
+            header.append(row)
+            lines.append(" | ".join(text for _, _, text in row))
+        else:
+            lines.append(label)
+    return lines if has_data else None
+
+
+def labelled(values, header):
+    """Pair each value with the header cells above it. Headers spanning every
+    value in the row ("Year Ended December 31,") are left out."""
+    starts = [start for start, _, _ in values]
+    for start, _, text in values:
+        headings = [h for row in header for a, b, h in row
+                    if a <= start < b and not (len(starts) > 1 and all(a <= s < b for s in starts))]
+        yield " ".join(headings), text
+
+
 def parse_lines(html):
     """Return [(text, heading_size)]; heading_size is set for all-bold lines."""
     with warnings.catch_warnings():
@@ -78,6 +160,12 @@ def parse_lines(html):
     # Inline XBRL keeps its machine-readable facts in a hidden header.
     for header in soup.find_all("ix:header"):
         header.decompose()
+    for table in soup.find_all("table"):
+        if table.find("table"):
+            continue
+        lines = render_table(table_rows(table))
+        if lines is not None:
+            table.replace_with("\n" + "\n".join(lines) + "\n")
     for tag in soup.find_all(is_bold):
         if not any(is_bold(parent) for parent in tag.parents if parent.name):
             tag.insert(0, f"{BOLD_START}{font_size(tag)}{BOLD_START}")
