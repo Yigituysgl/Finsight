@@ -1,5 +1,4 @@
 from groq import Groq
-from langchain_core.documents import Document
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
@@ -47,51 +46,6 @@ def chunk_key(doc):
     return (doc.metadata.get("accession"), doc.metadata.get("section"),
             doc.metadata.get("chunk_index"))
 
-# Chunks on each side of a hit that are added to the context, so a table or
-# argument cut at a chunk boundary is read whole. Off by default: it
-# roughly triples the context, and a third Item 7A chunk for FX Risk already
-# brings in the PM value-at-risk table, which ranks third in that Item.
-NEIGHBOURS  = 0
-MIN_OVERLAP = 20
-
-def chunk_id(accession, section, index):
-    return f"{accession}:{section}:{index}"
-
-def strip_overlap(previous, text):
-    """Drop the start of text that repeats the end of the chunk before it.
-    Matches shorter than MIN_OVERLAP are taken as coincidence, not overlap."""
-    for n in range(min(len(previous), len(text)), MIN_OVERLAP - 1, -1):
-        if previous.endswith(text[:n]):
-            return text[n:].lstrip()
-    return text
-
-def with_neighbours(docs, vectorstore):
-    """Each hit with the chunks either side of it, in rank order of the hits
-    and document order within each hit, without duplicates."""
-    if not NEIGHBOURS:
-        return docs
-    wanted = []
-    for doc in docs:
-        accession, section, index = chunk_key(doc)
-        for i in range(index - NEIGHBOURS, index + NEIGHBOURS + 1):
-            key = (accession, section, i)
-            if i >= 0 and key not in wanted:
-                wanted.append(key)
-    found = vectorstore.get(ids=[chunk_id(*key) for key in wanted])
-    by_key = {(m["accession"], m["section"], m["chunk_index"]): (text, m)
-              for text, m in zip(found["documents"], found["metadatas"])}
-
-    expanded = []
-    for key in wanted:
-        if key not in by_key:
-            continue  # before the first or after the last chunk of the Item
-        text, metadata = by_key[key]
-        previous = expanded[-1] if expanded else None
-        if previous is not None and chunk_key(previous) == (key[0], key[1], key[2] - 1):
-            text = strip_overlap(previous.page_content, text)
-        expanded.append(Document(page_content=text, metadata=metadata))
-    return expanded
-
 def retrieve_for_question(question, vectorstore, ticker):
     # Retrieve only from the selected company's filing, and always include
     # Item 8 so reported figures are in context even when MD&A ranks higher.
@@ -101,7 +55,7 @@ def retrieve_for_question(question, vectorstore, ticker):
             question, k=QA_ITEM_8_K, filter={"$and": [{"ticker": ticker}, {"section": "8"}]}):
         if chunk_key(doc) not in seen:
             docs.append(doc)
-    return with_neighbours(docs, vectorstore)
+    return docs
 
 def ask(question, vectorstore, ticker):
     docs = retrieve_for_question(question, vectorstore, ticker)

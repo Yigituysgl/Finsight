@@ -3,7 +3,7 @@ from collections import Counter
 from groq import Groq
 
 from config import GROQ_API_KEY, GROQ_MODEL, LLM_TEMPERATURE
-from rag import load_vectorstore, with_neighbours
+from rag import load_vectorstore
 from sections import SHORT_UNRESOLVED
 
 # gpt-oss is a reasoning model: its reasoning tokens count against
@@ -58,7 +58,7 @@ def retrieve(vectorstore, ticker, query, quotas):
     for section, k in quotas.items():
         docs += vectorstore.similarity_search(
             query, k=k, filter={"$and": [{"ticker": ticker}, {"section": section}]})
-    return with_neighbours(docs, vectorstore)
+    return docs
 
 def describe_read_from(docs):
     """E.g. "Item 7A ×2, Item 8 ×1", in retrieval order."""
