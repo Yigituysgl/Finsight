@@ -41,7 +41,3 @@ ratios are computed by that script from the quoted values, in $ millions. No mod
 | Term debt in fair value hedges (carrying) / notes principal | 12,600 / 91,300 | 13.8% |
 | (Notes + commercial paper) / cash and marketable securities | (91,300 + 8,000) / 132,400 | 75.0% |
 | (Notes due within 12 months + commercial paper) / cash and marketable securities | (12,400 + 8,000) / 132,400 | 15.4% |
-
-## Notes
-
-- The Item 8 term-debt table is misaligned by the parser (e.g. "2025 Effective Interest Rate: $86,781"), so debt figures are quoted from Item 7 instead.

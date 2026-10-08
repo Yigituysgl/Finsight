@@ -17,12 +17,16 @@ ratios are computed by that script from the quoted values, in $ millions. No mod
 - **Russia and Ukraine**: “In 2025, Russia accounted for around 9% of our total cigarette and heated tobacco unit shipment volume, and around 6% of our total net revenues.” (Item 1A)
 - **2025 net revenue growth, reported vs excluding currency and acquisitions/divestitures**: “Net revenues increased by 7.3%. Net revenues, excluding currency and acquisitions/divestitures, increased by 6.5%” (Item 7)
 - **2025 operating income growth, reported vs excluding currency and acquisitions/divestitures**: “Operating income increased by 11.1%. Operating income, excluding currency and acquisitions/divestitures, increased by 9.3%” (Item 7)
+- **Currency variance in 2025 net revenues (vs 2024; total variance first)**: “Variance Fav./(Unfav.) Total: $2,770 | Variance Fav./(Unfav.) Cur- rency: $461” (Item 7)
+- **Currency variance in 2025 operating income (vs 2024; total variance first)**: “Variance Fav./(Unfav.) Total: $1,490 | Variance Fav./(Unfav.) Cur- rency: $154” (Item 7)
 - **VaR, instruments sensitive to foreign currency rates (95%, one day)**: “Foreign currency rates | At December 31, 2025: $97 | Average: $152 | High: $197 | Low: $97” (Item 7A (Item 7, Market Risk))
 - **Foreign currency debt and derivatives**: “Foreign currency denominated debt and the majority of our $50 billion gross notional amount of derivative financial instruments are subject to foreign currency exchange rates fluctuation, primarily between the Euro and U.S. Dollar” (Item 7)
 
 | Computed ratio | Formula ($ millions) | Value |
 |---|---|---|
 | Net revenues outside the Americas segment / net revenues | (40,648 - 4,854) / 40,648 | 88.1% |
+| Currency variance in net revenues / net revenues | 461 / 40,648 | 1.1% |
+| Currency variance in operating income / operating income | 154 / 14,892 | 1.0% |
 
 ## Interest rate risk
 
@@ -43,5 +47,5 @@ ratios are computed by that script from the quoted values, in $ millions. No mod
 
 ## Notes
 
-- The Item 7 variance tables are misaligned by the parser: in the consolidated net revenues row, "Excl. Curr. & Acquis. / Divest.: 7.3%" is the reported change, "Change: 6.5%" is the change excluding currency and acquisitions/divestitures, and "Currency: $2,770" is the total variance (40,648 - 37,878). Read in order, the components are currency $461, acquisitions/divestitures $(170), price $1,536, volume/mix $920, cost/other $23 (sum 2,770). The prose quotes below are not affected.
 - Net revenues by country are disclosed only for Japan. The Americas segment includes the U.S., so revenue outside the Americas segment is a lower bound for revenue outside the U.S.
+- The currency variances are favorable (2025 vs 2024), from the Item 7 variance table; positive values are favorable.

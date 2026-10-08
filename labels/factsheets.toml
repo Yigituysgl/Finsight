@@ -9,9 +9,7 @@
 
 # ---------------------------------------------------------------- Apple
 [AAPL]
-notes = [
-  "The Item 8 term-debt table is misaligned by the parser (e.g. \"2025 Effective Interest Rate: $86,781\"), so debt figures are quoted from Item 7 instead.",
-]
+notes = []
 
 [[AAPL.facts]]
 id = "revenue"
@@ -606,8 +604,8 @@ denominator = ["cash"]
 # ---------------------------------------------------------------- Philip Morris
 [PM]
 notes = [
-  "The Item 7 variance tables are misaligned by the parser: in the consolidated net revenues row, \"Excl. Curr. & Acquis. / Divest.: 7.3%\" is the reported change, \"Change: 6.5%\" is the change excluding currency and acquisitions/divestitures, and \"Currency: $2,770\" is the total variance (40,648 - 37,878). Read in order, the components are currency $461, acquisitions/divestitures $(170), price $1,536, volume/mix $920, cost/other $23 (sum 2,770). The prose quotes below are not affected.",
   "Net revenues by country are disclosed only for Japan. The Americas segment includes the U.S., so revenue outside the Americas segment is a lower bound for revenue outside the U.S.",
+  "The currency variances are favorable (2025 vs 2024), from the Item 7 variance table; positive values are favorable.",
 ]
 
 [[PM.facts]]
@@ -680,6 +678,24 @@ topic = "fx"
 label = "2025 operating income growth, reported vs excluding currency and acquisitions/divestitures"
 section = "7"
 quote = "Operating income increased by 11.1%. Operating income, excluding currency and acquisitions/divestitures, increased by 9.3%"
+
+[[PM.facts]]
+id = "fx_variance_revenue"
+topic = "fx"
+label = "Currency variance in 2025 net revenues (vs 2024; total variance first)"
+section = "7"
+quote = "Variance Fav./(Unfav.) Total: $2,770 | Variance Fav./(Unfav.) Cur- rency: $461"
+value = "461"
+unit = "millions"
+
+[[PM.facts]]
+id = "fx_variance_operating_income"
+topic = "fx"
+label = "Currency variance in 2025 operating income (vs 2024; total variance first)"
+section = "7"
+quote = "Variance Fav./(Unfav.) Total: $1,490 | Variance Fav./(Unfav.) Cur- rency: $154"
+value = "154"
+unit = "millions"
 
 [[PM.facts]]
 id = "fx_var"
@@ -774,6 +790,18 @@ topic = "fx"
 label = "Net revenues outside the Americas segment / net revenues"
 numerator = ["revenue", "-americas_revenue"]
 denominator = ["revenue"]
+
+[[PM.ratios]]
+topic = "fx"
+label = "Currency variance in net revenues / net revenues"
+numerator = ["fx_variance_revenue"]
+denominator = ["revenue"]
+
+[[PM.ratios]]
+topic = "fx"
+label = "Currency variance in operating income / operating income"
+numerator = ["fx_variance_operating_income"]
+denominator = ["operating_income"]
 
 [[PM.ratios]]
 topic = "interest_rate"
