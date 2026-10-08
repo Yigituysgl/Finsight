@@ -5,6 +5,7 @@
     python scripts/eval_retrieval.py --retrieval-only         hit checks only, no LLM calls
     python scripts/eval_retrieval.py --repeats 3              repeat the LLM metrics
     python scripts/eval_retrieval.py --risk-only              hit checks + risk scores vs the owner's labels
+    python scripts/eval_retrieval.py --qa-only                hit checks + the 8 Q&A answers, no risk scoring
 
 Builds (or reuses) a separate vector store per setting under data/eval/stores,
 so the app's own store is never touched, then runs the app's retrieval code:
@@ -23,6 +24,9 @@ so the app's own store is never touched, then runs the app's retrieval code:
       - the PM FX risk score
       - how many of the 24 risk categories (4 filings x 6) come back n/a
 
+  * Q&A only (--qa-only): the answers to the app's revenue and net-income
+    questions for each company (8 calls, one at a time) with their citation
+    checks; the figures are compared with the filings by hand.
   * risk scores vs labels (--risk-only): all 24 categories scored once, one
     call at a time, compared with the owner's labels in labels/risk_labels.csv
     (blank rows are unlabeled): gap and agreement within ±1, n/a count, and
@@ -306,6 +310,8 @@ def main():
     parser.add_argument("--retrieval-only", action="store_true")
     parser.add_argument("--risk-only", action="store_true",
                         help="risk scores vs labels/risk_labels.csv, no Q&A")
+    parser.add_argument("--qa-only", action="store_true",
+                        help="the 8 Q&A answers with citation checks, no risk scoring")
     args = parser.parse_args()
     # Model output can contain characters the Windows console codepage lacks.
     sys.stdout.reconfigure(encoding="utf-8")
@@ -319,12 +325,16 @@ def main():
     if args.risk_only:
         print("\nRisk scoring, one call at a time")
         result["risk"] = run_risk_vs_labels(store, load_filings())
+    elif args.qa_only:
+        result["qa"] = {ticker: {name: cited_answer(question, store, ticker)
+                                 for name, question in QA_QUESTIONS.items()}
+                        for ticker in tickers}
     elif not args.retrieval_only:
         for n in range(args.repeats):
             print(f"\nLLM run {n + 1}/{args.repeats}")
             result["runs"].append(run_llm_metrics(store, tickers))
 
-    prefix = "risk_" if args.risk_only else ""
+    prefix = "risk_" if args.risk_only else "qa_" if args.qa_only else ""
     out = EVAL_DIR / "results" / f"{prefix}{label}_{datetime.now():%Y%m%d-%H%M%S}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -349,6 +359,10 @@ def main():
                 print(f"    {ticker:5} {name:11} {describe_citations(record)}")
     if "risk" in result:
         print_risk_report(result["risk"])
+    for ticker, answers in result.get("qa", {}).items():
+        for name, record in answers.items():
+            print(f"\n### {ticker} | {QA_QUESTIONS[name]}\n{record['answer']}")
+            print(f"  Citations: {describe_citations(record)}")
     print(f"\nSaved {out}")
 
 
