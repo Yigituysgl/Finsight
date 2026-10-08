@@ -257,12 +257,20 @@ def score_categories(vectorstore, ticker):
     return scores_dict, read_from, evidence
 
 def run_risk_analysis(vectorstore, ticker, company_name):
+    """Score all categories and write the summary. Prints only progress lines
+    (ASCII): the app runs this under whatever stdout encoding Streamlit has,
+    and on Windows a redirected stdout is cp1252, which cannot encode the
+    report's bars or many characters in model reasons."""
     print(f"\n=== FinSight Risk Analysis: {company_name} ===\n")
     scores_dict, read_from, evidence = score_categories(vectorstore, ticker)
-
-    parsed  = [score for score, _ in scores_dict.values() if score is not None]
     overall = overall_score(scores_dict)
+    print("  Generating executive summary...")
+    summary = generate_summary(scores_dict, overall, vectorstore, ticker)
+    return overall, scores_dict, summary, read_from, evidence
 
+def print_risk_report(company_name, overall, scores_dict, summary, read_from):
+    """Console report for the command line (stdout must accept UTF-8)."""
+    parsed = [score for score, _ in scores_dict.values() if score is not None]
     print("\n" + "="*50)
     print(f"RISK RESULTS: {company_name}")
     print("="*50)
@@ -285,16 +293,13 @@ def run_risk_analysis(vectorstore, ticker, company_name):
     else:
         print(f"OVERALL RISK SCORE: {overall}/100  —  {get_risk_level(overall//10)} RISK")
     print("="*50)
-
-    print("\nGenerating executive summary...")
-    summary = generate_summary(scores_dict, overall, vectorstore, ticker)
     print(f"\nEXECUTIVE SUMMARY:\n{summary}")
     print("\n" + "="*50)
-
-    return overall, scores_dict, summary, read_from, evidence
 
 if __name__ == "__main__":
     import sys
     sys.stdout.reconfigure(encoding="utf-8")  # reasons quote dashes from the filings
     vectorstore = load_vectorstore()
-    run_risk_analysis(vectorstore, ticker="AAPL", company_name="Apple Inc.")
+    overall, scores_dict, summary, read_from, _ = run_risk_analysis(
+        vectorstore, ticker="AAPL", company_name="Apple Inc.")
+    print_risk_report("Apple Inc.", overall, scores_dict, summary, read_from)

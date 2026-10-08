@@ -178,3 +178,17 @@ def test_overall_score_needs_at_least_four_scored_categories():
     assert overall_score(scores(5, 7, 3, 5, None, None)) == 50
     assert overall_score(scores(5, 7, 3, None, None, None)) is None
     assert overall_score(scores(*[None] * 6)) is None
+
+
+def test_risk_analysis_runs_under_a_cp1252_stdout(monkeypatch):
+    # Streamlit on Windows with redirected output: printing "█" or "≈" used to crash the app.
+    import io
+    import sys
+    scored = {"FX Risk": (7, "Gross exposure ≈ 60% [1]; € and █ in a reason."),
+              "Legal Risk": (None, "Insufficient information: none")}
+    monkeypatch.setattr(risk_scorer, "score_categories",
+                        lambda store, ticker: (scored, {"FX Risk": "Item 7A ×3", "Legal Risk": ""}, {}))
+    monkeypatch.setattr(risk_scorer, "generate_summary", lambda *args: "Summary ≈ €")
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(io.BytesIO(), encoding="cp1252"))
+    overall, scores_dict, summary, _, _ = risk_scorer.run_risk_analysis(None, "KO", "The Coca-Cola Company")
+    assert overall is None and scores_dict == scored and summary == "Summary ≈ €"
