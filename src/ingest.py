@@ -62,6 +62,7 @@ def chunk_filing(filing, sections, splitter):
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8")  # section titles may hold dashes and quotes
     filings = load_filings()
     missing = [f["ticker"] for f in filings if not cache_path(f).exists()]
     if missing:

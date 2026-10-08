@@ -5,6 +5,7 @@
 """
 import json
 import re
+import sys
 import warnings
 from collections import Counter
 
@@ -338,6 +339,9 @@ def describe_7a(section):
 
 
 def main():
+    # Windows writes piped output in cp1252, which turns an em dash into a
+    # byte that UTF-8 readers show as "�". The parsed text itself is fine.
+    sys.stdout.reconfigure(encoding="utf-8")
     SECTIONS_DIR.mkdir(parents=True, exist_ok=True)
     for filing in load_filings():
         sections = split_sections(cache_path(filing).read_bytes())

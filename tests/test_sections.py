@@ -252,3 +252,13 @@ def test_statement_names_used_by_other_filers_are_recognised():
 def test_statement_headings_outside_item_8_are_ignored():
     text = "Consolidated Statements of Operations\nRevenue grew."
     assert statement_parts({"section": "7", "text": text}) == [("", text)]
+
+
+def test_dash_entities_in_ascii_bytes_decode_to_dashes():
+    # EDGAR filings are pure ASCII with dashes as numeric entities.
+    html  = (b"<p>Revenue &#8212; total &#8211; 2025</p>"
+             b"<table><tr><td>Other</td><td>&#8212;</td><td>5</td></tr></table>")
+    lines = html_to_lines(html)
+    assert lines[0] == "Revenue — total – 2025"
+    assert "—" in lines[1]
+    assert not any("�" in line for line in lines)

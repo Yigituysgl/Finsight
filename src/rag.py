@@ -114,6 +114,8 @@ def ask(question, vectorstore, ticker):
     return answer, sources
 
 if __name__ == "__main__":
+    import sys
+    sys.stdout.reconfigure(encoding="utf-8")  # answers quote dashes from the filings
     print("\n=== FinSight: Day 2 RAG Q&A ===\n")
     vectorstore = load_vectorstore()
 

@@ -200,5 +200,7 @@ def run_risk_analysis(vectorstore, ticker, company_name):
     return overall, scores_dict, summary, read_from
 
 if __name__ == "__main__":
+    import sys
+    sys.stdout.reconfigure(encoding="utf-8")  # reasons quote dashes from the filings
     vectorstore = load_vectorstore()
     run_risk_analysis(vectorstore, ticker="AAPL", company_name="Apple Inc.")
