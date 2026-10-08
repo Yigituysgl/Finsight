@@ -364,6 +364,36 @@ def scale_lines(income_text, filing):
     return rows, units
 
 
+# Balance-sheet rows that show the net cash / debt position, and the
+# current/non-current headings that tell repeated rows apart (Apple lists
+# "Marketable securities" and "Term debt" under both).
+CASH_DEBT_ROW = re.compile(
+    r"^(cash and cash equivalents|short-term investments|marketable securities|"
+    r"commercial paper|short-term borrowings|loans and notes payable|term debt|"
+    r"current (portion|maturities) of (long-term )?debt|long-term debt|debt and finance leases|"
+    r"total current (assets|liabilities))\b[^|]*\|", re.IGNORECASE)
+CURRENT_HEADING = re.compile(r"^(current|non-?current) (assets|liabilities):?$", re.IGNORECASE)
+
+
+def cash_debt_lines(balance_sheet_text):
+    """The balance sheet's units line, cash, investment and debt rows and current
+    totals, in statement order, each heading kept only before a row it labels.
+    Rows repeated by overlapping chunks appear once."""
+    lines, seen, heading = [], set(), None
+    for line in balance_sheet_text.split("\n"):
+        if UNITS_LINE.match(line) and not lines:
+            lines.append(line)
+        elif CURRENT_HEADING.match(line):
+            heading = line
+        elif CASH_DEBT_ROW.match(line) and line not in seen:
+            if heading:
+                lines.append(heading)
+                heading = None
+            lines.append(line)
+            seen.add(line)
+    return lines
+
+
 def describe_7a(section):
     if section["content_source"] == POINTER_RESOLVED:
         return f"pointer resolved to {section['resolved_from']}"

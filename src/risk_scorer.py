@@ -6,9 +6,11 @@ from langchain_core.documents import Document
 
 from config import GROQ_API_KEY, GROQ_MODEL, LLM_TEMPERATURE
 from fetch_filings import load_filings
-from rag import check_answer, income_statement, load_vectorstore, numbered_context, passages
+from rag import (check_answer, chunk_key, income_statement, load_vectorstore, numbered_context,
+                 passages)
 from rubric import GENERAL, MIN_SCORED_CATEGORIES, rubric_text
-from sections import SHORT_UNRESOLVED, ScaleLineError, scale_lines
+from sections import (BALANCE_SHEET, SHORT_UNRESOLVED, ScaleLineError, cash_debt_lines,
+                      scale_lines)
 
 # gpt-oss is a reasoning model: its reasoning tokens count against
 # max_tokens, so the limits must leave room for reasoning plus the answer.
@@ -41,6 +43,17 @@ RISK_CATEGORIES = {
                            "sections": {"1A": 2, "7": 1}},
 }
 
+# Further searches per category, merged with the main one. FX gross exposure
+# depends on where revenue comes from, which Item 7A rarely states: this query
+# finds the revenue-by-region or by-segment table (Item 7 or the Item 8 segment
+# note) in all four filings, for the current year.
+GEOGRAPHY_QUERY = "revenue by geographic area United States international countries segment"
+EXTRA_SEARCHES  = {"FX Risk": [(GEOGRAPHY_QUERY, {"7": 1, "8": 2})]}
+
+# These categories also read the balance sheet's cash, investment and debt rows
+# (balance_sheet_passage), so the net position is in front of the model.
+BALANCE_SHEET_CATEGORIES = {"Liquidity Risk", "Interest Rate Risk"}
+
 # When a filing's Item 7A is a pointer that could not be resolved, categories
 # that read 7A also read Item 7, where the market risk discussion usually is.
 FALLBACK_ITEM_7_CHUNKS = 2
@@ -58,6 +71,17 @@ def scale_passage(vectorstore, filing):
     text = "\n".join([units] * bool(units) + list(rows.values()))
     # Not a stored chunk: chunk_index -1 keeps it apart from real chunks.
     return Document(page_content=text, metadata={**docs[0].metadata, "chunk_index": -1})
+
+def balance_sheet_passage(vectorstore, ticker):
+    """The balance sheet's cash, investment and debt rows (sections.cash_debt_lines)
+    from the stored balance-sheet chunks, or None if none are found."""
+    found = vectorstore.get(where={"$and": [{"ticker": ticker}, {"statement": BALANCE_SHEET}]})
+    docs  = sorted(zip(found["documents"], found["metadatas"]), key=lambda d: d[1]["chunk_index"])
+    lines = cash_debt_lines("\n".join(text for text, _ in docs))
+    if not any("|" in line for line in lines):
+        return None
+    # Not a stored chunk: chunk_index -2 keeps it apart from real chunks.
+    return Document(page_content="\n".join(lines), metadata={**docs[0][1], "chunk_index": -2})
 
 def item_7a_source(vectorstore, ticker):
     """How the filing's Item 7A text was obtained (own / pointer_resolved / short_unresolved)."""
@@ -78,6 +102,17 @@ def retrieve(vectorstore, ticker, query, quotas):
             query, k=k, filter={"$and": [{"ticker": ticker}, {"section": section}]})
     return docs
 
+def category_docs(vectorstore, ticker, category, item_7a):
+    """The category's main search plus its EXTRA_SEARCHES, without duplicates."""
+    docs = retrieve(vectorstore, ticker, RISK_CATEGORIES[category]["query"],
+                    section_quotas(category, item_7a))
+    for query, quotas in EXTRA_SEARCHES.get(category, []):
+        docs += retrieve(vectorstore, ticker, query, quotas)
+    unique = {}
+    for doc in docs:
+        unique.setdefault(chunk_key(doc), doc)
+    return list(unique.values())
+
 def describe_read_from(docs):
     """E.g. "Item 7A ×2, Item 8 ×1", in retrieval order."""
     counts = Counter(doc.metadata["section"] for doc in docs)
@@ -89,8 +124,11 @@ REASON_FORMATS = {
 }
 DEFAULT_REASON_FORMAT = "[one or two sentences; each fact cited as [n]]"
 
-def score_prompt(category, context):
+def score_prompt(category, context, with_balance_sheet=False):
     reason_format = REASON_FORMATS.get(category, DEFAULT_REASON_FORMAT)
+    fixed = "passage [1] is the company's scale from its income statement"
+    if with_balance_sheet:
+        fixed += ", passage [2] its cash, investments and debt from the balance sheet"
     return f"""You are a financial risk analyst scoring the {category} of a company from its 10-K.
 
 {GENERAL}
@@ -98,12 +136,14 @@ def score_prompt(category, context):
 RUBRIC for {category} (1-3 low, 4-6 medium, 7-10 high):
 {rubric_text(category)}
 
-PASSAGES (numbered; passage [1] is the company's scale from its income statement):
+PASSAGES (numbered; {fixed}):
 {context}
 
 Rules:
-- Use only the passages. State figures exactly as they appear there and cite the
-  passage after each fact as [n].
+- Use only the passages and cite the passage after each fact as [n].
+- Quote figures exactly as they appear in the passage, with the same digits and
+  units: no rounding and no unit conversion. A passage figure of 47,941 in a table
+  "in millions" is written $47,941 million, not $47.9 billion.
 - A ratio you compute yourself must be marked with "≈", e.g. "≈ 2% of revenue".
 - Write the reason on a single line.
 
@@ -111,14 +151,15 @@ Respond in exactly this format:
 SCORE: [number 1-10, or INSUFFICIENT]
 REASON: {reason_format}"""
 
-def score_category(category_name, docs, scale):
-    """Score one category from its retrieved docs, with the scale passage as [1].
-    Returns (score, reason, evidence); evidence holds the numbered passages
-    (marked cited or not) and check_answer's result for the reason."""
+def score_category(category_name, docs, scale, balance_sheet=None):
+    """Score one category from its retrieved docs, with the scale passage as [1]
+    and, if given, the balance-sheet passage as [2]. Returns (score, reason,
+    evidence); evidence holds the numbered passages (marked cited or not) and
+    check_answer's result for the reason."""
     if not docs:
         return None, "No text found in the Items this category reads", {"passages": [], "check": None}
-    docs   = [scale] + docs
-    prompt = score_prompt(category_name, numbered_context(docs))
+    docs   = [scale] + [balance_sheet] * bool(balance_sheet) + docs
+    prompt = score_prompt(category_name, numbered_context(docs), bool(balance_sheet))
 
     client   = Groq(api_key=GROQ_API_KEY)
     response = client.chat.completions.create(
@@ -202,13 +243,15 @@ def score_categories(vectorstore, ticker):
     scores_dict, read_from, evidence = {}, {}, {}
     filing  = next(f for f in load_filings() if f["ticker"] == ticker)
     scale   = scale_passage(vectorstore, filing)
+    balance = balance_sheet_passage(vectorstore, ticker)
     item_7a = item_7a_source(vectorstore, ticker)
     print(f"  Item 7A text: {item_7a}")
 
-    for category, spec in RISK_CATEGORIES.items():
+    for category in RISK_CATEGORIES:
         print(f"  Scoring {category}...")
-        docs = retrieve(vectorstore, ticker, spec["query"], section_quotas(category, item_7a))
-        score, reason, evidence[category] = score_category(category, docs, scale)
+        docs = category_docs(vectorstore, ticker, category, item_7a)
+        score, reason, evidence[category] = score_category(
+            category, docs, scale, balance if category in BALANCE_SHEET_CATEGORIES else None)
         scores_dict[category] = (score, reason)
         read_from[category]   = describe_read_from(docs)
     return scores_dict, read_from, evidence

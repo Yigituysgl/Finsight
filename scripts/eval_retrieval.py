@@ -53,7 +53,8 @@ from config import COLLECTION_NAME, DATA_DIR, EMBED_MODEL, LLM_TEMPERATURE, ROOT
 from fetch_filings import cache_path, load_filings
 from ingest import CHUNK_OVERLAP, CHUNK_SIZE, chunk_filing, make_splitter
 from rag import ask, check_answer, retrieve_for_question
-from risk_scorer import (RISK_CATEGORIES, describe_read_from, item_7a_source, overall_score,
+from risk_scorer import (BALANCE_SHEET_CATEGORIES, RISK_CATEGORIES, balance_sheet_passage,
+                         category_docs, describe_read_from, item_7a_source, overall_score,
                          retrieve, scale_passage, score_categories, score_category,
                          section_quotas)
 from sections import split_sections
@@ -224,13 +225,15 @@ def score_risk(store, filings):
     for filing in filings:
         ticker  = filing["ticker"]
         scale   = scale_passage(store, filing)
+        balance = balance_sheet_passage(store, ticker)
         item_7a = item_7a_source(store, ticker)
         scores[ticker] = {}
-        for category, spec in RISK_CATEGORIES.items():
-            docs = retrieve(store, ticker, spec["query"], section_quotas(category, item_7a))
+        for category in RISK_CATEGORIES:
+            docs  = category_docs(store, ticker, category, item_7a)
+            sheet = balance if category in BALANCE_SHEET_CATEGORIES else None
             try:
                 score, reason, evidence = with_rate_limit_retries(
-                    lambda: score_category(category, docs, scale))
+                    lambda: score_category(category, docs, scale, sheet))
             except DailyQuotaExhausted as error:
                 return scores, f"daily quota exhausted before {ticker} {category}: {error}"
             scores[ticker][category] = {
