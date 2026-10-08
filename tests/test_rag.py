@@ -1,7 +1,8 @@
 import re
 from types import SimpleNamespace
 
-from rag import qa_prompt, retrieve_for_question, source_label, unique_sources
+from rag import (numbered_context, qa_prompt, retrieve_for_question, source_label,
+                 unique_sources)
 
 
 def doc(section, chunk_index, resolved_from=""):
@@ -72,6 +73,23 @@ def test_income_statement_chunk_already_retrieved_is_not_duplicated():
     docs  = retrieve_for_question("net revenues?", store, "PM")
     assert [(d.metadata["section"], d.metadata["chunk_index"]) for d in docs] == \
         [("8", 0), ("8", 1)]
+
+
+def test_context_numbers_passages_and_names_the_statement():
+    income = doc("8", 0)
+    income.metadata["statement"] = "income"
+    income.page_content = "Net revenues | 2025: $40,648"
+    context = numbered_context([doc("7", 1), income])
+    assert context == (
+        "[1] Philip Morris International Inc. · 10-K FY2025 · Item 7\ntext\n\n"
+        "[2] Philip Morris International Inc. · 10-K FY2025 · Item 8 · Income statement\n"
+        "Net revenues | 2025: $40,648")
+
+
+def test_prompt_asks_for_passage_citations():
+    prompt = prompt_text()
+    assert "cite the passage it comes from in square brackets, e.g. [2] or [1, 3]" in prompt
+    assert "Cite only passage numbers that appear in the context" in prompt
 
 
 def prompt_text():

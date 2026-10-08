@@ -5,7 +5,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 
 from config import (COLLECTION_NAME, EMBED_MODEL, GROQ_API_KEY, GROQ_MODEL,
                     LLM_TEMPERATURE, VECTORSTORE_DIR)
-from sections import INCOME
+from sections import BALANCE_SHEET, CASH_FLOW, INCOME
 
 def load_vectorstore():
     print("  Loading vector store from disk...")
@@ -31,6 +31,20 @@ def source_label(source):
     if source.get("resolved_from"):
         item += f" ({source['resolved_from']})"
     return f"{source['company']} · {source['form']} FY{source['fiscal_year']} · {item}"
+
+STATEMENT_NAMES = {INCOME: "Income statement", BALANCE_SHEET: "Balance sheet",
+                   CASH_FLOW: "Cash flow statement"}
+
+def passage_label(metadata):
+    """source_label plus the primary statement the chunk belongs to, if any."""
+    label = source_label(metadata)
+    statement = STATEMENT_NAMES.get(metadata.get("statement", ""))
+    return f"{label} · {statement}" if statement else label
+
+def numbered_context(docs):
+    """Each chunk as "[n] label", then its text; n counts from 1 in retrieval order."""
+    return "\n\n".join(f"[{n}] {passage_label(doc.metadata)}\n{doc.page_content}"
+                       for n, doc in enumerate(docs, 1))
 
 def unique_sources(docs):
     """One entry per filing section, in retrieval order."""
@@ -88,6 +102,9 @@ shareowners, e.g. "Net income attributable to common stockholders",
 "Net earnings" line above it as net income when such a line exists; that line
 includes noncontrolling interests and may only be mentioned as a clearly
 labelled secondary figure.
+The context is a list of numbered passages. After every figure and every
+statement taken from the context, cite the passage it comes from in square
+brackets, e.g. [2] or [1, 3]. Cite only passage numbers that appear in the context.
 If the answer is not in the context, say "I could not find this information in the document."
 
 CONTEXT:
@@ -99,7 +116,7 @@ Provide a clear, structured answer with specific numbers where available."""
 
 def ask(question, vectorstore, ticker):
     docs = retrieve_for_question(question, vectorstore, ticker)
-    context = "\n\n".join([doc.page_content for doc in docs])
+    context = numbered_context(docs)
     sources  = unique_sources(docs)
     prompt   = qa_prompt(context, question)
 
