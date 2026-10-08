@@ -10,7 +10,7 @@ everything relative to company size).
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
-<!-- docs/qa.png: a Q&A answer with its cited passage expanded -->
+![Q&A: Philip Morris net income, answered with a cited passage from the income statement](docs/qa.png)
 <!-- docs/risk.png: the risk dashboard with one category's "Sources" expanded -->
 <!-- docs/demo.gif: selecting a filing, asking a question, running the risk analysis -->
 
