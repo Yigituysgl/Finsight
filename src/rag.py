@@ -1,3 +1,5 @@
+import re
+
 from groq import Groq
 from langchain_core.documents import Document
 from langchain_community.vectorstores import Chroma
@@ -46,14 +48,32 @@ def numbered_context(docs):
     return "\n\n".join(f"[{n}] {passage_label(doc.metadata)}\n{doc.page_content}"
                        for n, doc in enumerate(docs, 1))
 
-def unique_sources(docs):
-    """One entry per filing section, in retrieval order."""
-    sources = []
-    for doc in docs:
-        source = {field: doc.metadata.get(field, "") for field in SOURCE_FIELDS}
-        if source not in sources:
-            sources.append(source)
-    return sources
+# "[2]", "[1, 3]"; "[1][2]" is two citations.
+CITATION = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
+
+def cited_numbers(answer):
+    """Passage numbers the answer cites, in order of first citation."""
+    numbers = []
+    for group in CITATION.findall(answer):
+        for n in map(int, group.split(",")):
+            if n not in numbers:
+                numbers.append(n)
+    return numbers
+
+def passages(docs, answer):
+    """One entry per context passage: its number, label, source fields, text
+    and whether the answer cites it."""
+    cited = set(cited_numbers(answer))
+    return [{**{field: doc.metadata.get(field, "") for field in SOURCE_FIELDS},
+             "n": n, "label": passage_label(doc.metadata),
+             "text": doc.page_content, "cited": n in cited}
+            for n, doc in enumerate(docs, 1)]
+
+def check_answer(answer, passages):
+    """Cited passage numbers, and those that match no passage."""
+    cited = cited_numbers(answer)
+    return {"cited":             cited,
+            "invalid_citations": [n for n in cited if not 1 <= n <= len(passages)]}
 
 QA_K        = 3  # best matches anywhere in the selected filing
 QA_ITEM_8_K = 1  # plus the best match from the financial statements
@@ -117,8 +137,7 @@ Provide a clear, structured answer with specific numbers where available."""
 def ask(question, vectorstore, ticker):
     docs = retrieve_for_question(question, vectorstore, ticker)
     context = numbered_context(docs)
-    sources  = unique_sources(docs)
-    prompt   = qa_prompt(context, question)
+    prompt  = qa_prompt(context, question)
 
     client = Groq(api_key=GROQ_API_KEY)
     response = client.chat.completions.create(
@@ -128,7 +147,7 @@ def ask(question, vectorstore, ticker):
     )
 
     answer = response.choices[0].message.content
-    return answer, sources
+    return answer, passages(docs, answer)
 
 if __name__ == "__main__":
     import sys
@@ -144,8 +163,8 @@ if __name__ == "__main__":
 
     for q in questions:
         print(f"\nQ: {q}")
-        answer, sources = ask(q, vectorstore, "AAPL")
+        answer, retrieved = ask(q, vectorstore, "AAPL")
         print(f"A: {answer}")
-        for source in sources:
-            print(f"Source: {source_label(source)}")
+        for passage in retrieved:
+            print(f"[{passage['n']}]{' (cited)' if passage['cited'] else ''} {passage['label']}")
         print("-" * 60)

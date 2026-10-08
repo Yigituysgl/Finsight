@@ -1,8 +1,8 @@
 import re
 from types import SimpleNamespace
 
-from rag import (numbered_context, qa_prompt, retrieve_for_question, source_label,
-                 unique_sources)
+from rag import (check_answer, cited_numbers, numbered_context, passages, qa_prompt,
+                 retrieve_for_question, source_label)
 
 
 def doc(section, chunk_index, resolved_from=""):
@@ -53,10 +53,28 @@ def test_label_shows_where_a_resolved_pointer_led():
         "Philip Morris International Inc. · 10-K FY2025 · Item 7A (Item 7, Market Risk)"
 
 
-def test_sources_are_one_per_section_in_retrieval_order():
-    sources = unique_sources([doc("8", 4), doc("7", 1), doc("8", 9)])
-    assert [s["section"] for s in sources] == ["8", "7"]
-    assert "chunk_index" not in sources[0]
+def test_cited_numbers_read_single_list_and_adjacent_citations():
+    answer = "Revenue was $40,648 [2]. Net earnings were $11,348 [1, 3][2] and rose [4]."
+    assert cited_numbers(answer) == [2, 1, 3, 4]
+
+
+def test_cited_numbers_ignore_other_brackets():
+    assert cited_numbers("See [Item 8] and [link](https://x) and [1a].") == []
+
+
+def test_passages_mark_which_ones_the_answer_cites():
+    retrieved = passages([doc("7", 1), doc("8", 0), doc("8", 1)], "Figure [2].")
+    assert [(p["n"], p["cited"]) for p in retrieved] == [(1, False), (2, True), (3, False)]
+    assert retrieved[1]["label"] == "Philip Morris International Inc. · 10-K FY2025 · Item 8"
+    assert retrieved[1]["source_url"] == "https://www.sec.gov/x.htm"
+    assert retrieved[1]["text"] == "text"
+
+
+def test_check_flags_citations_to_missing_passages():
+    retrieved = passages([doc("7", 1), doc("8", 0)], "")
+    check     = check_answer("A [1], B [3], C [0].", retrieved)
+    assert check["cited"] == [1, 3, 0]
+    assert check["invalid_citations"] == [3, 0]
 
 
 def test_income_statement_is_always_included_in_document_order():
