@@ -58,6 +58,10 @@ def test_cited_numbers_read_single_list_and_adjacent_citations():
     assert cited_numbers(answer) == [2, 1, 3, 4]
 
 
+def test_cited_numbers_read_full_width_brackets():
+    assert cited_numbers("Revenue $47,941 【2】, 【4】 and $45,754【4】.") == [2, 4]
+
+
 def test_cited_numbers_ignore_other_brackets():
     assert cited_numbers("See [Item 8] and [link](https://x) and [1a].") == []
 

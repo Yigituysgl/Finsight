@@ -49,8 +49,9 @@ def numbered_context(docs):
     return "\n\n".join(f"[{n}] {passage_label(doc.metadata)}\n{doc.page_content}"
                        for n, doc in enumerate(docs, 1))
 
-# "[2]", "[1, 3]"; "[1][2]" is two citations.
-CITATION = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
+# "[2]", "[1, 3]"; "[1][2]" is two citations. gpt-oss also writes its own
+# full-width style, "【2】".
+CITATION = re.compile(r"[\[【](\d+(?:\s*,\s*\d+)*)[\]】]")
 
 def cited_numbers(answer):
     """Passage numbers the answer cites, in order of first citation."""
