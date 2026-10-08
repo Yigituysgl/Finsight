@@ -166,7 +166,7 @@ with col_left:
     if st.session_state.doc_processed:
         if st.button("🔍 Run Risk Analysis", type="secondary"):
             with st.spinner("Analyzing risk across 6 categories..."):
-                overall, scores_dict, summary, read_from = run_risk_analysis(
+                overall, scores_dict, summary, read_from, evidence = run_risk_analysis(
                     st.session_state.vectorstore,
                     ticker=st.session_state.filing["ticker"],
                     company_name=st.session_state.filing["company"]
@@ -175,7 +175,8 @@ with col_left:
                     "overall":     overall,
                     "scores_dict": scores_dict,
                     "summary":     summary,
-                    "read_from":   read_from
+                    "read_from":   read_from,
+                    "evidence":    evidence
                 }
             st.success("Risk analysis complete!")
 

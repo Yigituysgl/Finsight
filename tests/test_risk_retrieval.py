@@ -3,8 +3,9 @@ from types import SimpleNamespace
 import pytest
 
 import fetch_filings
+import risk_scorer
 from risk_scorer import (RISK_CATEGORIES, describe_read_from, retrieve, scale_passage,
-                         score_category, section_quotas)
+                         score_category, score_prompt, section_quotas)
 from sections import ScaleLineError
 
 
@@ -65,7 +66,7 @@ def test_short_section_returns_what_exists():
 
 
 def test_category_with_no_text_is_not_scored():
-    assert score_category("FX Risk", []) == (None, "No text found in the Items this category reads")
+    assert score_category("FX Risk", [], scale=None) ==         (None, "No text found in the Items this category reads", {"passages": [], "check": None})
 
 
 class IncomeStore:
@@ -114,3 +115,55 @@ def test_load_filings_requires_the_scale_line_pins(tmp_path, monkeypatch):
     monkeypatch.setattr(fetch_filings, "FILINGS_CONFIG", config)
     with pytest.raises(SystemExit, match="KO: operating_income_line, net_income_line not pinned"):
         fetch_filings.load_filings()
+
+
+def chunk(section, text, statement=""):
+    return SimpleNamespace(page_content=text, metadata={
+        "company": "The Coca-Cola Company", "form": "10-K", "fiscal_year": 2025,
+        "section": section, "statement": statement, "resolved_from": "",
+        "source_url": "https://www.sec.gov/ko.htm", "chunk_index": 0})
+
+
+def test_score_prompt_carries_the_general_rule_rubric_and_fx_reason_format():
+    prompt = " ".join(score_prompt("FX Risk", "[1] CONTEXT").split())
+    assert "risk to earnings and cash flow over the next 1-2 years" in prompt
+    assert "supports a score of at most 5" in prompt
+    assert "1-3: under ~20% of revenue from outside the home market" in prompt
+    assert "hedging lowers that score by at most 2 points" in prompt
+    assert "passage [1] is the company's scale from its income statement): [1] CONTEXT" in prompt
+    assert 'A ratio you compute yourself must be marked with "≈"' in prompt
+    assert "REASON: Gross exposure: [facts, each cited as [n]]. Hedging: [facts, each cited as [n]]." in prompt
+
+
+def test_score_prompt_uses_the_category_rubric_and_default_reason_format():
+    prompt = " ".join(score_prompt("Interest Rate Risk", "X").split())
+    assert "over ~5% of net income, or large near-term maturities" in prompt
+    assert "Gross exposure" not in prompt
+    assert "REASON: [one or two sentences; each fact cited as [n]]" in prompt
+
+
+class FakeGroq:
+    """Stands in for the Groq client; records the prompt, returns a fixed reply."""
+    reply, prompts = "", []
+
+    def __init__(self, api_key):
+        self.chat = SimpleNamespace(completions=self)
+
+    def create(self, model, messages, temperature, max_tokens):
+        FakeGroq.prompts.append(messages[0]["content"])
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=FakeGroq.reply))])
+
+
+def test_score_category_numbers_scale_first_and_checks_the_cited_figures(monkeypatch):
+    monkeypatch.setattr(risk_scorer, "Groq", FakeGroq)
+    FakeGroq.reply = ("SCORE: 7\nREASON: Gross exposure: $28.8 billion of revenues outside the U.S. [2] "
+                      "on revenues of $47,941 [1]. Hedging: notional $21,128 million [2].")
+    scale = chunk("8", "Net Operating Revenues | 2025: $47,941", statement="income")
+    fx    = chunk("7A", "we generated $28.8 billion ... notional values were $21,128 million")
+    score, reason, evidence = score_category("FX Risk", [fx], scale)
+
+    assert score == 7 and reason.startswith("Gross exposure: $28.8 billion")
+    assert "[1] The Coca-Cola Company · 10-K FY2025 · Item 8 · Income statement" in FakeGroq.prompts[-1]
+    assert "[2] The Coca-Cola Company · 10-K FY2025 · Item 7A" in FakeGroq.prompts[-1]
+    assert [(p["n"], p["cited"]) for p in evidence["passages"]] == [(1, True), (2, True)]
+    assert evidence["check"] == {"cited": [2, 1], "invalid_citations": [], "unverified_figures": []}

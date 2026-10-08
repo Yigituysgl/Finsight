@@ -5,7 +5,9 @@ from groq import Groq
 from langchain_core.documents import Document
 
 from config import GROQ_API_KEY, GROQ_MODEL, LLM_TEMPERATURE
-from rag import income_statement, load_vectorstore
+from fetch_filings import load_filings
+from rag import check_answer, income_statement, load_vectorstore, numbered_context, passages
+from rubric import GENERAL, rubric_text
 from sections import SHORT_UNRESOLVED, ScaleLineError, scale_lines
 
 # gpt-oss is a reasoning model: its reasoning tokens count against
@@ -81,23 +83,42 @@ def describe_read_from(docs):
     counts = Counter(doc.metadata["section"] for doc in docs)
     return ", ".join(f"Item {section} ×{n}" for section, n in counts.items())
 
-def score_category(category_name, docs):
-    if not docs:
-        return None, "No text found in the Items this category reads"
-    context = "\n\n".join(f"[Item {doc.metadata['section']}]\n{doc.page_content}" for doc in docs)
+# FX reasons keep gross exposure and hedging apart (rubric.NOTES["FX Risk"]).
+REASON_FORMATS = {
+    "FX Risk": "Gross exposure: [facts, each cited as [n]]. Hedging: [facts, each cited as [n]].",
+}
+DEFAULT_REASON_FORMAT = "[one or two sentences; each fact cited as [n]]"
 
-    prompt = f"""You are a financial risk analyst.
-Analyze the following text and score the {category_name} on a scale of 1-10.
-1-3 = LOW risk, 4-6 = MEDIUM risk, 7-10 = HIGH risk
-If the text does not contain enough information to assess this risk, answer
-SCORE: INSUFFICIENT and use REASON to say what is missing.
+def score_prompt(category, context):
+    reason_format = REASON_FORMATS.get(category, DEFAULT_REASON_FORMAT)
+    return f"""You are a financial risk analyst scoring the {category} of a company from its 10-K.
 
-TEXT:
+{GENERAL}
+
+RUBRIC for {category} (1-3 low, 4-6 medium, 7-10 high):
+{rubric_text(category)}
+
+PASSAGES (numbered; passage [1] is the company's scale from its income statement):
 {context}
+
+Rules:
+- Use only the passages. State figures exactly as they appear there and cite the
+  passage after each fact as [n].
+- A ratio you compute yourself must be marked with "≈", e.g. "≈ 2% of revenue".
+- Write the reason on a single line.
 
 Respond in exactly this format:
 SCORE: [number 1-10, or INSUFFICIENT]
-REASON: [one sentence explanation]"""
+REASON: {reason_format}"""
+
+def score_category(category_name, docs, scale):
+    """Score one category from its retrieved docs, with the scale passage as [1].
+    Returns (score, reason, evidence); evidence holds the numbered passages
+    (marked cited or not) and check_answer's result for the reason."""
+    if not docs:
+        return None, "No text found in the Items this category reads", {"passages": [], "check": None}
+    docs   = [scale] + docs
+    prompt = score_prompt(category_name, numbered_context(docs))
 
     client   = Groq(api_key=GROQ_API_KEY)
     response = client.chat.completions.create(
@@ -107,7 +128,9 @@ REASON: [one sentence explanation]"""
         max_tokens=SCORE_MAX_TOKENS
     )
 
-    return parse_score_response(response.choices[0].message.content or "")
+    score, reason = parse_score_response(response.choices[0].message.content or "")
+    retrieved     = passages(docs, reason)
+    return score, reason, {"passages": retrieved, "check": check_answer(reason, retrieved)}
 
 def parse_score_response(raw):
     """Return (score, reason). score is None (shown as n/a) when the model answers
@@ -163,22 +186,25 @@ Be specific, use actual numbers from the context."""
     return (response.choices[0].message.content or "").strip()
 
 def score_categories(vectorstore, ticker):
-    """Return ({category: (score, reason)}, {category: "Item 7A ×2, ..."})."""
-    scores_dict, read_from = {}, {}
+    """Return ({category: (score, reason)}, {category: "Item 7A ×2, ..."},
+    {category: evidence}); see score_category for evidence."""
+    scores_dict, read_from, evidence = {}, {}, {}
+    filing  = next(f for f in load_filings() if f["ticker"] == ticker)
+    scale   = scale_passage(vectorstore, filing)
     item_7a = item_7a_source(vectorstore, ticker)
     print(f"  Item 7A text: {item_7a}")
 
     for category, spec in RISK_CATEGORIES.items():
         print(f"  Scoring {category}...")
-        docs                  = retrieve(vectorstore, ticker, spec["query"],
-                                         section_quotas(category, item_7a))
-        scores_dict[category] = score_category(category, docs)
+        docs = retrieve(vectorstore, ticker, spec["query"], section_quotas(category, item_7a))
+        score, reason, evidence[category] = score_category(category, docs, scale)
+        scores_dict[category] = (score, reason)
         read_from[category]   = describe_read_from(docs)
-    return scores_dict, read_from
+    return scores_dict, read_from, evidence
 
 def run_risk_analysis(vectorstore, ticker, company_name):
     print(f"\n=== FinSight Risk Analysis: {company_name} ===\n")
-    scores_dict, read_from = score_categories(vectorstore, ticker)
+    scores_dict, read_from, evidence = score_categories(vectorstore, ticker)
 
     # Unparsed categories (score None) are left out of the overall score
     # instead of being counted as a default value.
@@ -213,7 +239,7 @@ def run_risk_analysis(vectorstore, ticker, company_name):
     print(f"\nEXECUTIVE SUMMARY:\n{summary}")
     print("\n" + "="*50)
 
-    return overall, scores_dict, summary, read_from
+    return overall, scores_dict, summary, read_from, evidence
 
 if __name__ == "__main__":
     import sys

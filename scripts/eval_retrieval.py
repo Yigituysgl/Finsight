@@ -152,8 +152,9 @@ def run_llm_metrics(store, tickers):
                  for ticker in tickers}
     scores    = {}
     for ticker in tickers:
-        scored, read_from = score_categories(store, ticker)
-        scores[ticker] = {cat: {"score": s, "reason": r, "read_from": read_from[cat]}
+        scored, read_from, evidence = score_categories(store, ticker)
+        scores[ticker] = {cat: {"score": s, "reason": r, "read_from": read_from[cat],
+                                "check": evidence[cat]["check"]}
                           for cat, (s, r) in scored.items()}
     n_a = [f"{t} {cat}" for t, cats in scores.items()
            for cat, v in cats.items() if v["score"] is None]
