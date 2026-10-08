@@ -62,6 +62,10 @@ def test_cited_numbers_read_full_width_brackets():
     assert cited_numbers("Revenue $47,941 【2】, 【4】 and $45,754【4】.") == [2, 4]
 
 
+def test_cited_numbers_read_line_references():
+    assert cited_numbers("Net income $96,995 million【1†L1-L3】【5†L1-L3】") == [1, 5]
+
+
 def test_cited_numbers_ignore_other_brackets():
     assert cited_numbers("See [Item 8] and [link](https://x) and [1a].") == []
 
