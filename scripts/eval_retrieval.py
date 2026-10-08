@@ -17,6 +17,8 @@ so the app's own store is never touched, then runs the app's retrieval code:
   * LLM metrics (sampled at the app's LLM_TEMPERATURE):
       - the Tesla revenue answer, and whether it states both reported figures
       - the answers to the app's revenue and net-income questions
+      - for each answer: the cited passages, citations to missing passages,
+        and figures not found in any cited passage
       - the PM FX risk score
       - how many of the 24 risk categories (4 filings x 6) come back n/a
 
@@ -38,7 +40,7 @@ from langchain_community.vectorstores import Chroma
 from config import COLLECTION_NAME, DATA_DIR, EMBED_MODEL, LLM_TEMPERATURE
 from fetch_filings import cache_path, load_filings
 from ingest import CHUNK_OVERLAP, CHUNK_SIZE, chunk_filing, make_splitter
-from rag import ask, retrieve_for_question
+from rag import ask, check_answer, retrieve_for_question
 from risk_scorer import (RISK_CATEGORIES, item_7a_source, retrieve,
                          score_categories, section_quotas)
 from sections import split_sections
@@ -130,9 +132,22 @@ def check_retrieval(store):
     return checks
 
 
+def cited_answer(question, store, ticker):
+    """The answer, the number of context passages, and check_answer's result."""
+    answer, retrieved = ask(question, store, ticker)
+    return {"answer": answer, "passages": len(retrieved), **check_answer(answer, retrieved)}
+
+
+def describe_citations(record):
+    return (f"cited {record['cited'] or 'nothing'} of {record['passages']} passages"
+            f" | invalid: {record['invalid_citations'] or 'none'}"
+            f" | unverified figures: {record['unverified_figures'] or 'none'}")
+
+
 def run_llm_metrics(store, tickers):
-    answer, _ = ask(TESLA_QUESTION, store, "TSLA")
-    qa        = {ticker: {name: ask(question, store, ticker)[0]
+    tesla     = cited_answer(TESLA_QUESTION, store, "TSLA")
+    answer    = tesla["answer"]
+    qa        = {ticker: {name: cited_answer(question, store, ticker)
                           for name, question in QA_QUESTIONS.items()}
                  for ticker in tickers}
     scores    = {}
@@ -143,7 +158,7 @@ def run_llm_metrics(store, tickers):
     n_a = [f"{t} {cat}" for t, cats in scores.items()
            for cat, v in cats.items() if v["score"] is None]
     return {
-        "tesla_answer":       answer,
+        "tesla":              tesla,
         "tesla_figures_found": {f: f in answer for f in TESLA_FIGURES},
         "qa":                 qa,
         "pm_fx":              scores["PM"]["FX Risk"],
@@ -183,12 +198,18 @@ def main():
     for n, run in enumerate(result["runs"], 1):
         figures = ", ".join(f"{f} {'yes' if ok else 'no'}" for f, ok in run["tesla_figures_found"].items())
         print(f"\nRun {n}: Tesla figures stated: {figures}")
-        print(f"  Tesla answer: {run['tesla_answer']}")
+        print(f"  Tesla answer: {run['tesla']['answer']}")
+        print(f"  Tesla citations: {describe_citations(run['tesla'])}")
         print(f"  PM FX score:  {run['pm_fx']['score'] or 'n/a'}  ({run['pm_fx']['reason']})")
         print(f"  n/a: {len(run['n_a'])}/{len(tickers) * len(RISK_CATEGORIES)}  {run['n_a']}")
         for ticker, answers in run["qa"].items():
-            for name, qa_answer in answers.items():
-                print(f"\n  {ticker} {QA_QUESTIONS[name]}\n{qa_answer}")
+            for name, record in answers.items():
+                print(f"\n  {ticker} {QA_QUESTIONS[name]}\n{record['answer']}")
+                print(f"  Citations: {describe_citations(record)}")
+        print("\n  Citation summary:")
+        for ticker, answers in run["qa"].items():
+            for name, record in answers.items():
+                print(f"    {ticker:5} {name:11} {describe_citations(record)}")
     print(f"\nSaved {out}")
 
 
