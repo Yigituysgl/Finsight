@@ -1,24 +1,24 @@
 company,category,my_score,my_reason
-AAPL,FX Risk,,
-AAPL,Interest Rate Risk,,
+AAPL,FX Risk,6,"Gross exposure: 63.5% of net sales outside the U.S. ((64,377 + 199,994) / 416,161), a majority, so 7, though no FX impact on net sales is quantified; hedging: foreign currency derivatives (one-day VaR $590M) but certain exposures may be left unhedged, so -1."
+AAPL,Interest Rate Risk,2,"Fixed-rate notes of $91.3B plus $8.0B commercial paper are 75.0% of $132.4B cash and marketable securities, +100bp adds $129M interest expense (0.12% of net income), and the $2,416M portfolio fair-value decline (2.2%) weighs less, so 2."
 AAPL,Liquidity Risk,,
 AAPL,Revenue Risk,,
 AAPL,Legal Risk,,
 AAPL,Operational Risk,,
-TSLA,FX Risk,,
-TSLA,Interest Rate Risk,,
+TSLA,FX Risk,7,"~50% of revenue outside the US and no financial hedging, but local production in China and Germany is a partial natural hedge; the 39%-of-operating-income figure is a hypothetical 10% shock on monetary balances, while the realised 2025 FX loss was $407M."
+TSLA,Interest Rate Risk,2,"Total debt of $8,177M is 18.6% of cash and short-term investments (16,510 + 27,550), interest expense of $338M is below interest income of $1,680M, and 2026 maturities are 3.6% of that cash, so 2, although the filing gives no rate sensitivity."
 TSLA,Liquidity Risk,,
 TSLA,Revenue Risk,,
 TSLA,Legal Risk,,
 TSLA,Operational Risk,,
-KO,FX Risk,,
-KO,Interest Rate Risk,,
+KO,FX Risk,7,"Gross exposure: 60.1% of revenues outside the U.S. ($28.8B), FX cut 2025 operating income by 12% (over 3%) with Mexican, Argentine, Brazilian and Turkish currency exposure, so 8; hedging: $21,128M derivative notional (73.4% of foreign revenues), but the 12% hit is after hedging, so -1."
+KO,Interest Rate Risk,4,"Moderate leverage (debt of 1,551 + 1,822 + 42,119 is 2.9x the $15.8B of cash and investments) with some floating exposure (27.7% of long-term debt in fair value hedges), but +1pp adds only $120M interest expense (0.92% of net income), so 4."
 KO,Liquidity Risk,,
 KO,Revenue Risk,,
 KO,Legal Risk,,
 KO,Operational Risk,,
-PM,FX Risk,,
-PM,Interest Rate Risk,,
+PM,FX Risk,8,"Largest gross exposure of the four (≥88% of revenue outside the Americas, heavy EM, translation on nearly all earnings) = gross 9; FX debt and derivative hedging −1. The favourable 2025 effect (+1.1%) does not reduce exposure."
+PM,Interest Rate Risk,6,"High gross leverage and large 2026 maturities vs cash, but debt mostly fixed with ~7-year average maturity; refinancing $3.5B at +100bp ≈ $35M, about 0.3% of net income."
 PM,Liquidity Risk,,
 PM,Revenue Risk,,
 PM,Legal Risk,,
