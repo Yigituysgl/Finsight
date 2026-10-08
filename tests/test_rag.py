@@ -171,3 +171,16 @@ def test_figures_in_an_answer_without_citations_are_all_unverified():
     cited.page_content = "Revenue 47,941"
     assert check_answer("Revenue was $47,941.", passages([cited], ""))[
         "unverified_figures"] == ["$47,941"]
+
+
+def test_approximate_ratios_are_listed_apart_only_when_allowed():
+    cited = doc("8", 0)
+    cited.page_content = "Net revenues | 2025: $40,648 | Interest expense, net | 2025: 966"
+    retrieved = passages([cited], "")
+    reason = "Net interest of $966 [1] is ≈ 2.4% of revenues of $40,648 [1]; debt ≈ 10.0x cash, ≈ $35 more."
+    risk = check_answer(reason, retrieved, allow_approximate=True)
+    assert risk["approximate_ratios"] == ["≈ 2.4%", "≈ 10.0x"]
+    assert risk["unverified_figures"] == ["$35"]          # an approximate amount is not a ratio
+    qa = check_answer(reason, retrieved)
+    assert "approximate_ratios" not in qa
+    assert qa["unverified_figures"] == ["2.4%", "10.0x", "$35"]

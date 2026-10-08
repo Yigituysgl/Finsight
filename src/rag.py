@@ -81,39 +81,62 @@ YEAR_NUMBER    = re.compile(r"(19|20)\d\d")
 def number_value(text):
     return Decimal(text.replace(",", "")).normalize()
 
-def answer_figures(answer):
-    """Figures stated in the answer: numbers with a "$", "%", thousands separator
-    or decimals, or of three or more digits. Plain years, citation markers and
-    small counts ("Item 7", "3 years") are left out."""
-    figures = []
-    for match in ANSWER_NUMBER.finditer(CITATION.sub("", answer)):
+# A ratio the model computed itself is marked "≈ 2%" or "≈ 2.9x" (risk scoring).
+RATIO_SUFFIX = re.compile(r"\s*[x×]")
+
+def figure_matches(answer):
+    """(figure, approximate) for each figure stated in the answer: numbers with a
+    "$", "%", thousands separator or decimals, or of three or more digits. Plain
+    years, citation markers and small counts ("Item 7", "3 years") are left out.
+    approximate: a percentage or multiple marked with a preceding "≈"."""
+    text, found = CITATION.sub("", answer), []
+    for match in ANSWER_NUMBER.finditer(text):
         dollar, number, percent = match.groups()
         if not (dollar or percent or "," in number or "." in number or len(number) >= 3):
             continue
         if not (dollar or percent) and YEAR_NUMBER.fullmatch(number):
             continue
-        if match.group(0).strip() not in figures:
-            figures.append(match.group(0).strip())
+        multiple    = RATIO_SUFFIX.match(text, match.end())
+        approximate = bool(percent or multiple) and text[:match.start()].rstrip().endswith("≈")
+        figure      = match.group(0).strip() + (multiple.group(0).strip() if multiple else "")
+        if (figure, approximate) not in found:
+            found.append((figure, approximate))
+    return found
+
+def answer_figures(answer):
+    figures = []
+    for figure, _ in figure_matches(answer):
+        if figure not in figures:
+            figures.append(figure)
     return figures
 
-def unverified_figures(answer, cited_passages):
+def unverified_figures(answer, cited_passages, allow_approximate=False):
     """Figures in the answer whose value appears in none of the cited passages.
     Values are compared without "$", "%", signs or thousands separators, so
     "$11,348 million" matches a table cell "11,348". A warning only: a figure
-    can appear in a cited passage on a different line than the answer implies."""
+    can appear in a cited passage on a different line than the answer implies.
+    With allow_approximate, ratios marked "≈" are not checked."""
     values = {number_value(n) for p in cited_passages
               for n in PASSAGE_NUMBER.findall(p["text"])}
-    return [figure for figure in answer_figures(answer)
+    figures = [figure for figure, approximate in figure_matches(answer)
+               if not (allow_approximate and approximate)]
+    return [figure for figure in dict.fromkeys(figures)
             if number_value(ANSWER_NUMBER.search(figure).group(2)) not in values]
 
-def check_answer(answer, passages):
+def check_answer(answer, passages, allow_approximate=False):
     """Cited passage numbers, those that match no passage, and the answer's
-    figures that are not in any cited passage."""
+    figures that are not in any cited passage. With allow_approximate (risk
+    scoring), "≈" ratios are listed apart as approximate_ratios and not
+    checked; Q&A answers may not derive figures, so they are checked."""
     cited = cited_numbers(answer)
-    return {"cited":              cited,
-            "invalid_citations":  [n for n in cited if not 1 <= n <= len(passages)],
-            "unverified_figures": unverified_figures(
-                answer, [p for p in passages if p["n"] in cited])}
+    check = {"cited":              cited,
+             "invalid_citations":  [n for n in cited if not 1 <= n <= len(passages)],
+             "unverified_figures": unverified_figures(
+                 answer, [p for p in passages if p["n"] in cited], allow_approximate)}
+    if allow_approximate:
+        check["approximate_ratios"] = list(dict.fromkeys(
+            f"≈ {figure}" for figure, approximate in figure_matches(answer) if approximate))
+    return check
 
 QA_K        = 3  # best matches anywhere in the selected filing
 QA_ITEM_8_K = 1  # plus the best match from the financial statements

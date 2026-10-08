@@ -4,8 +4,8 @@ import pytest
 
 import fetch_filings
 import risk_scorer
-from risk_scorer import (RISK_CATEGORIES, describe_read_from, retrieve, scale_passage,
-                         score_category, score_prompt, section_quotas)
+from risk_scorer import (RISK_CATEGORIES, describe_read_from, overall_score, retrieve,
+                         scale_passage, score_category, score_prompt, section_quotas)
 from sections import ScaleLineError
 
 
@@ -166,4 +166,15 @@ def test_score_category_numbers_scale_first_and_checks_the_cited_figures(monkeyp
     assert "[1] The Coca-Cola Company · 10-K FY2025 · Item 8 · Income statement" in FakeGroq.prompts[-1]
     assert "[2] The Coca-Cola Company · 10-K FY2025 · Item 7A" in FakeGroq.prompts[-1]
     assert [(p["n"], p["cited"]) for p in evidence["passages"]] == [(1, True), (2, True)]
-    assert evidence["check"] == {"cited": [2, 1], "invalid_citations": [], "unverified_figures": []}
+    assert evidence["check"] == {"cited": [2, 1], "invalid_citations": [], "unverified_figures": [],
+                                 "approximate_ratios": []}
+
+
+def scores(*values):
+    return {f"Category {i}": (value, "reason") for i, value in enumerate(values)}
+
+
+def test_overall_score_needs_at_least_four_scored_categories():
+    assert overall_score(scores(5, 7, 3, 5, None, None)) == 50
+    assert overall_score(scores(5, 7, 3, None, None, None)) is None
+    assert overall_score(scores(*[None] * 6)) is None

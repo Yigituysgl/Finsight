@@ -1,3 +1,4 @@
+import html
 import os
 import sys
 import streamlit as st
@@ -9,6 +10,7 @@ from config import GROQ_MODEL, VECTORSTORE_DIR
 from fetch_filings import load_filings
 from rag import load_vectorstore, has_documents, ask, check_answer
 from risk_scorer import run_risk_analysis
+from rubric import MIN_SCORED_CATEGORIES
 
 
 st.set_page_config(
@@ -104,16 +106,23 @@ def ask_and_record(question):
         "check":    check_answer(answer, passages),
     })
 
-def show_answer(msg):
-    # Markdown reads "$...$" as LaTeX; answers are full of dollar amounts.
-    st.markdown(msg["content"].replace("$", r"\$"))
-    check = msg["check"]
+def show_check(check):
+    """Warnings from check_answer; "≈" ratios from risk scoring are shown as
+    the model's own approximations, not as unverified figures."""
     if check["invalid_citations"]:
         st.warning("Cited passages that do not exist: "
                    + ", ".join(f"[{n}]" for n in check["invalid_citations"]))
     if check["unverified_figures"]:
         st.warning("Not found in the cited passages, check against the filing: "
                    + ", ".join(check["unverified_figures"]).replace("$", r"\$"))
+    if check.get("approximate_ratios"):
+        st.caption("Approximate ratio (computed by the model): "
+                   + ", ".join(check["approximate_ratios"]))
+
+def show_answer(msg):
+    # Markdown reads "$...$" as LaTeX; answers are full of dollar amounts.
+    st.markdown(msg["content"].replace("$", r"\$"))
+    show_check(msg["check"])
     for passage in msg["passages"]:
         if passage["cited"]:
             with st.expander(f"[{passage['n']}] {passage['label']}"):
@@ -234,8 +243,9 @@ with col_right:
         if overall is not None:
             st.plotly_chart(create_gauge(overall), use_container_width=True)
         else:
-            st.error("No category could be scored, so there is no overall score.")
-        if failed:
+            st.error(f"No overall score: only {len(scores_dict) - failed} of {len(scores_dict)} "
+                     f"categories could be scored (at least {MIN_SCORED_CATEGORIES} needed).")
+        if failed and overall is not None:
             st.warning(f"{failed} of {len(scores_dict)} categories could not be scored "
                        f"and are left out of the overall score.")
 
@@ -245,18 +255,30 @@ with col_right:
             css_class, label = get_risk_color(score)
             short_name       = category.replace(" Risk", "")
             score_text       = "n/a" if score is None else f"{score}/10"
+            # Reasons are model text inside HTML: escape it, and "$" so amounts
+            # are not read as LaTeX.
             st.markdown(
                 f'<div class="risk-box {css_class}">'
                 f'<b>{short_name}</b>: {score_text} {label}<br>'
-                f'<small>{reason}</small></div>',
+                f'<small>{html.escape(reason).replace("$", "&#36;")}</small></div>',
                 unsafe_allow_html=True
             )
             st.caption(f"Read from: {results['read_from'][category] or 'nothing'}")
+            evidence = results["evidence"][category]
+            if evidence["check"]:
+                show_check(evidence["check"])
+            cited = [p for p in evidence["passages"] if p["cited"]]
+            if cited:
+                with st.expander(f"Sources ({len(cited)})"):
+                    for passage in cited:
+                        st.markdown(f"**[{passage['n']}] {passage['label']}** · "
+                                    f"[filing on sec.gov]({passage['source_url']})")
+                        st.code(passage["text"], language=None, wrap_lines=True)
 
-        
+
         st.divider()
         st.markdown("**Executive Summary:**")
-        st.markdown(f"_{summary}_")
+        st.markdown(f"_{summary.replace('$', chr(92) + '$')}_")
 
     else:
         st.info("Click 'Run Risk Analysis' to see the risk dashboard.")

@@ -7,7 +7,7 @@ from langchain_core.documents import Document
 from config import GROQ_API_KEY, GROQ_MODEL, LLM_TEMPERATURE
 from fetch_filings import load_filings
 from rag import check_answer, income_statement, load_vectorstore, numbered_context, passages
-from rubric import GENERAL, rubric_text
+from rubric import GENERAL, MIN_SCORED_CATEGORIES, rubric_text
 from sections import SHORT_UNRESOLVED, ScaleLineError, scale_lines
 
 # gpt-oss is a reasoning model: its reasoning tokens count against
@@ -130,7 +130,8 @@ def score_category(category_name, docs, scale):
 
     score, reason = parse_score_response(response.choices[0].message.content or "")
     retrieved     = passages(docs, reason)
-    return score, reason, {"passages": retrieved, "check": check_answer(reason, retrieved)}
+    check         = check_answer(reason, retrieved, allow_approximate=True)
+    return score, reason, {"passages": retrieved, "check": check}
 
 def parse_score_response(raw):
     """Return (score, reason). score is None (shown as n/a) when the model answers
@@ -148,14 +149,24 @@ def parse_score_response(raw):
         return None, "Could not parse model response"
     return score, reason
 
+def overall_score(scores_dict):
+    """0-100 average of the scored categories, or None when fewer than
+    MIN_SCORED_CATEGORIES could be scored. Unscored categories (None) are left
+    out instead of being counted as a default value."""
+    scored = [score for score, _ in scores_dict.values() if score is not None]
+    if len(scored) < MIN_SCORED_CATEGORIES:
+        return None
+    return round(sum(scored) / (10 * len(scored)) * 100)
+
 def get_risk_level(score):
     if score <= 3:   return "LOW"
     elif score <= 6: return "MEDIUM"
     else:            return "HIGH"
 
-def generate_summary(scores_dict, overall_score, vectorstore, ticker):
-    if overall_score is None:
-        return "No risk category could be scored, so no summary was generated."
+def generate_summary(scores_dict, overall, vectorstore, ticker):
+    if overall is None:
+        return (f"Fewer than {MIN_SCORED_CATEGORIES} of {len(scores_dict)} risk categories could be "
+                "scored, so no summary was generated.")
 
     docs    = retrieve(vectorstore, ticker, "financial performance risk outlook", {"7": 3})
     context = "\n\n".join([doc.page_content for doc in docs])
@@ -168,7 +179,7 @@ def generate_summary(scores_dict, overall_score, vectorstore, ticker):
     prompt = f"""You are a senior financial analyst.
 Individual risk scores:
 {scores_text}
-Overall risk score: {overall_score}/100
+Overall risk score: {overall}/100
 
 Document context:
 {context}
@@ -206,10 +217,8 @@ def run_risk_analysis(vectorstore, ticker, company_name):
     print(f"\n=== FinSight Risk Analysis: {company_name} ===\n")
     scores_dict, read_from, evidence = score_categories(vectorstore, ticker)
 
-    # Unparsed categories (score None) are left out of the overall score
-    # instead of being counted as a default value.
     parsed  = [score for score, _ in scores_dict.values() if score is not None]
-    overall = round(sum(parsed) / (10 * len(parsed)) * 100) if parsed else None
+    overall = overall_score(scores_dict)
 
     print("\n" + "="*50)
     print(f"RISK RESULTS: {company_name}")
@@ -229,7 +238,7 @@ def run_risk_analysis(vectorstore, ticker, company_name):
     print("\n" + "="*50)
     print(f"Categories scored: {len(parsed)}/{len(scores_dict)}")
     if overall is None:
-        print("OVERALL RISK SCORE: n/a")
+        print(f"OVERALL RISK SCORE: n/a (at least {MIN_SCORED_CATEGORIES} scored categories needed)")
     else:
         print(f"OVERALL RISK SCORE: {overall}/100  —  {get_risk_level(overall//10)} RISK")
     print("="*50)
