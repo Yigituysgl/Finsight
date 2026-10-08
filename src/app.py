@@ -7,7 +7,7 @@ sys.path.append(os.path.dirname(__file__))
 
 from config import GROQ_MODEL, VECTORSTORE_DIR
 from fetch_filings import load_filings
-from rag import load_vectorstore, has_documents, ask, source_label
+from rag import load_vectorstore, has_documents, ask, check_answer
 from risk_scorer import run_risk_analysis
 
 
@@ -92,6 +92,39 @@ def get_risk_color(score):
 def filing_label(filing):
     return f"{filing['company']} ({filing['ticker']}) · {filing['form']} FY{filing['fiscal_year']}"
 
+def ask_and_record(question):
+    st.session_state.chat_history.append({"role": "user", "content": question})
+    with st.spinner("Thinking..."):
+        answer, passages = ask(question, st.session_state.vectorstore,
+                               st.session_state.filing["ticker"])
+    st.session_state.chat_history.append({
+        "role":     "assistant",
+        "content":  answer,
+        "passages": passages,
+        "check":    check_answer(answer, passages),
+    })
+
+def show_answer(msg):
+    # Markdown reads "$...$" as LaTeX; answers are full of dollar amounts.
+    st.markdown(msg["content"].replace("$", r"\$"))
+    check = msg["check"]
+    if check["invalid_citations"]:
+        st.warning("Cited passages that do not exist: "
+                   + ", ".join(f"[{n}]" for n in check["invalid_citations"]))
+    if check["unverified_figures"]:
+        st.warning("Not found in the cited passages, check against the filing: "
+                   + ", ".join(check["unverified_figures"]).replace("$", r"\$"))
+    for passage in msg["passages"]:
+        if passage["cited"]:
+            with st.expander(f"[{passage['n']}] {passage['label']}"):
+                st.markdown(f"[Open the filing on sec.gov]({passage['source_url']})")
+                st.code(passage["text"], language=None, wrap_lines=True)
+    uncited = [p for p in msg["passages"] if not p["cited"]]
+    if uncited:
+        with st.expander(f"Also retrieved ({len(uncited)})"):
+            for passage in uncited:
+                st.markdown(f"[{passage['n']}] [{passage['label']}]({passage['source_url']})")
+
 
 st.markdown('<p class="main-header">📊 FinSight AI</p>', unsafe_allow_html=True)
 st.markdown(f'<p class="sub-header">Financial Document Intelligence — {GROQ_MODEL} via Groq</p>',
@@ -157,17 +190,7 @@ with col_main:
     if st.session_state.doc_processed:
         user_input = st.chat_input(f"Ask about {st.session_state.filing['company']}'s 10-K...")
         if user_input:
-            st.session_state.chat_history.append(
-                {"role": "user", "content": user_input}
-            )
-            with st.spinner("Thinking..."):
-                answer, sources = ask(user_input, st.session_state.vectorstore,
-                                      st.session_state.filing["ticker"])
-            st.session_state.chat_history.append({
-                "role":    "assistant",
-                "content": answer,
-                "sources": sources
-            })
+            ask_and_record(user_input)
             st.rerun()
     else:
         st.info("Build the knowledge base to start chatting.")
@@ -184,17 +207,7 @@ with col_main:
         cols = st.columns(2)
         for i, suggestion in enumerate(suggestions):
             if cols[i % 2].button(suggestion, key=f"sug_{i}"):
-                st.session_state.chat_history.append(
-                    {"role": "user", "content": suggestion}
-                )
-                with st.spinner("Thinking..."):
-                    answer, sources = ask(suggestion, st.session_state.vectorstore,
-                                          st.session_state.filing["ticker"])
-                st.session_state.chat_history.append({
-                    "role":    "assistant",
-                    "content": answer,
-                    "sources": sources
-                })
+                ask_and_record(suggestion)
                 st.rerun()
 
     
@@ -204,9 +217,7 @@ with col_main:
                 st.write(msg["content"])
         else:
             with st.chat_message("assistant"):
-                st.write(msg["content"])
-                for source in msg.get("sources", []):
-                    st.caption(f"Source: [{source_label(source)}]({source['source_url']})")
+                show_answer(msg)
 
 with col_right:
     st.subheader("📈 Risk Dashboard")
