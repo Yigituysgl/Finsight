@@ -162,6 +162,10 @@ shareowners, e.g. "Net income attributable to common stockholders",
 "Net earnings" line above it as net income when such a line exists; that line
 includes noncontrolling interests and may only be mentioned as a clearly
 labelled secondary figure.
+Take headline figures (total revenue, net income) from a passage labelled
+"Income statement" whenever the context contains one. Never take them from
+note tables about equity method investees, segments or related parties, even
+when a line there has the same name (e.g. "Consolidated net income").
 The context is a list of numbered passages. After every figure and every
 statement taken from the context, cite the passage it comes from in square
 brackets, e.g. [2] or [1, 3]. Cite only passage numbers that appear in the context.

@@ -128,6 +128,15 @@ def test_prompt_asks_for_net_income_attributable_to_the_company():
     assert "includes noncontrolling interests and may only be mentioned as a clearly labelled secondary figure" in prompt
 
 
+def test_prompt_takes_headline_figures_from_the_income_statement():
+    prompt = prompt_text()
+    assert ('Take headline figures (total revenue, net income) from a passage labelled '
+            '"Income statement" whenever the context contains one') in prompt
+    assert ("Never take them from note tables about equity method investees, segments "
+            "or related parties") in prompt
+    assert '(e.g. "Consolidated net income")' in prompt
+
+
 def test_prompt_keeps_figure_rules_and_fills_in_context_and_question():
     prompt = prompt_text()
     assert "Never derive a figure" in prompt
