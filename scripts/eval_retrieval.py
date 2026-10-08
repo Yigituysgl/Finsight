@@ -4,6 +4,7 @@
     python scripts/eval_retrieval.py --chunk-size 1000 --chunk-overlap 150
     python scripts/eval_retrieval.py --retrieval-only         hit checks only, no LLM calls
     python scripts/eval_retrieval.py --repeats 3              repeat the LLM metrics
+    python scripts/eval_retrieval.py --risk-only              hit checks + risk scores vs the owner's labels
 
 Builds (or reuses) a separate vector store per setting under data/eval/stores,
 so the app's own store is never touched, then runs the app's retrieval code:
@@ -22,13 +23,22 @@ so the app's own store is never touched, then runs the app's retrieval code:
       - the PM FX risk score
       - how many of the 24 risk categories (4 filings x 6) come back n/a
 
+  * risk scores vs labels (--risk-only): all 24 categories scored once, one
+    call at a time, compared with the owner's labels in labels/risk_labels.csv
+    (blank rows are unlabeled): gap and agreement within ±1, n/a count, and
+    whether an overall score is shown per company. A per-minute rate limit is
+    waited out; when the daily quota runs out the run stops and saves what
+    finished.
+
 Each run is written to data/eval/results as JSON.
 """
 import argparse
+import csv
 import hashlib
 import json
 import re
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -37,15 +47,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
-from config import COLLECTION_NAME, DATA_DIR, EMBED_MODEL, LLM_TEMPERATURE
+from groq import RateLimitError
+
+from config import COLLECTION_NAME, DATA_DIR, EMBED_MODEL, LLM_TEMPERATURE, ROOT_DIR
 from fetch_filings import cache_path, load_filings
 from ingest import CHUNK_OVERLAP, CHUNK_SIZE, chunk_filing, make_splitter
 from rag import ask, check_answer, retrieve_for_question
-from risk_scorer import (RISK_CATEGORIES, item_7a_source, retrieve,
-                         score_categories, section_quotas)
+from risk_scorer import (RISK_CATEGORIES, describe_read_from, item_7a_source, overall_score,
+                         retrieve, scale_passage, score_categories, score_category,
+                         section_quotas)
 from sections import split_sections
 
-EVAL_DIR = DATA_DIR / "eval"
+EVAL_DIR   = DATA_DIR / "eval"
+LABELS_CSV = ROOT_DIR / "labels" / "risk_labels.csv"
+
+# Groq's free tier limits tokens per minute and per day. A per-minute limit is
+# waited out (at most this many times per call); a daily one ends the run.
+RATE_LIMIT_RETRIES = 6
+DEFAULT_WAIT       = 30   # seconds, when the response gives no retry-after
 
 TESLA_QUESTION = "What were Tesla's total revenues in fiscal 2025 and fiscal 2024?"
 TESLA_FIGURES  = ["94,827", "97,690"]  # $M, FY2025 and FY2024, Item 8
@@ -168,12 +187,122 @@ def run_llm_metrics(store, tickers):
     }
 
 
+class DailyQuotaExhausted(Exception):
+    pass
+
+
+def is_daily_limit(error):
+    text = str(error).lower()
+    return "per day" in text or "(tpd)" in text or "(rpd)" in text
+
+
+def retry_after(error):
+    try:
+        return min(120.0, float(error.response.headers.get("retry-after")))
+    except (AttributeError, TypeError, ValueError):
+        return DEFAULT_WAIT
+
+
+def with_rate_limit_retries(call):
+    for _ in range(RATE_LIMIT_RETRIES):
+        try:
+            return call()
+        except RateLimitError as error:
+            if is_daily_limit(error):
+                raise DailyQuotaExhausted(str(error)) from error
+            wait = retry_after(error)
+            print(f"    rate limit, waiting {wait:.0f}s")
+            time.sleep(wait)
+    return call()
+
+
+def score_risk(store, filings):
+    """Score all categories of all filings, one call at a time. Returns
+    ({ticker: {category: result}}, None) or, when the daily quota runs out,
+    (what finished, the reason it stopped)."""
+    scores = {}
+    for filing in filings:
+        ticker  = filing["ticker"]
+        scale   = scale_passage(store, filing)
+        item_7a = item_7a_source(store, ticker)
+        scores[ticker] = {}
+        for category, spec in RISK_CATEGORIES.items():
+            docs = retrieve(store, ticker, spec["query"], section_quotas(category, item_7a))
+            try:
+                score, reason, evidence = with_rate_limit_retries(
+                    lambda: score_category(category, docs, scale))
+            except DailyQuotaExhausted as error:
+                return scores, f"daily quota exhausted before {ticker} {category}: {error}"
+            scores[ticker][category] = {
+                "score": score, "reason": reason, "read_from": describe_read_from(docs),
+                "check": evidence["check"],
+                "cited": [p["label"] for p in evidence["passages"] if p["cited"]]}
+            print(f"  {ticker:5} {category:19} {'n/a' if score is None else score}")
+    return scores, None
+
+
+def load_labels(path=LABELS_CSV):
+    """{(ticker, category): {"score", "reason"}} for the labelled rows, in file order."""
+    with open(path, encoding="utf-8", newline="") as f:
+        return {(row["company"], row["category"]): {"score": int(row["my_score"]),
+                                                    "reason": row["my_reason"]}
+                for row in csv.DictReader(f) if row["my_score"].strip()}
+
+
+def compare_with_labels(scores, labels):
+    """One row per label: model score (None if n/a or not run), gap, within ±1."""
+    rows = []
+    for (ticker, category), label in labels.items():
+        result = scores.get(ticker, {}).get(category)
+        model  = result["score"] if result else None
+        gap    = None if model is None else model - label["score"]
+        rows.append({"company": ticker, "category": category, "label": label["score"],
+                     "model": model,
+                     "status": "not run" if result is None else "n/a" if model is None else "scored",
+                     "gap": gap, "within_1": gap is not None and abs(gap) <= 1})
+    return rows
+
+
+def run_risk_vs_labels(store, filings):
+    scores, stopped = score_risk(store, filings)
+    overall = {ticker: overall_score({c: (v["score"], v["reason"]) for c, v in cats.items()})
+                       if len(cats) == len(RISK_CATEGORIES) else "incomplete"
+               for ticker, cats in scores.items()}
+    rows = compare_with_labels(scores, load_labels())
+    return {"complete": stopped is None, "stopped": stopped, "scores": scores,
+            "overall": overall,
+            "n_a": [f"{t} {c}" for t, cats in scores.items() for c, v in cats.items()
+                    if v["score"] is None],
+            "scored_categories": sum(len(cats) for cats in scores.values()),
+            "comparison": rows,
+            "within_1": sum(r["within_1"] for r in rows), "labels": len(rows)}
+
+
+def print_risk_report(risk):
+    print(f"\n=== Risk scores vs labels ({'complete' if risk['complete'] else 'INCOMPLETE'}) ===")
+    if risk["stopped"]:
+        print(f"Stopped: {risk['stopped']}")
+    print(f"{'company':8}{'category':20}{'model':>7}{'label':>6}{'gap':>5}  within ±1")
+    for r in risk["comparison"]:
+        model = r["model"] if r["status"] == "scored" else r["status"]
+        gap   = "" if r["gap"] is None else f"{r['gap']:+d}"
+        print(f"{r['company']:8}{r['category']:20}{model!s:>7}{r['label']:>6}{gap:>5}  "
+              f"{'yes' if r['within_1'] else 'no'}")
+    print(f"\nAgreement: {risk['within_1']} of {risk['labels']} within ±1")
+    print(f"n/a: {len(risk['n_a'])} of {risk['scored_categories']} categories run  {risk['n_a']}")
+    for ticker, overall in risk["overall"].items():
+        shown = overall if overall is not None else "not shown (fewer than 4 scored)"
+        print(f"Overall {ticker}: {shown}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--chunk-size",    type=int, default=CHUNK_SIZE)
     parser.add_argument("--chunk-overlap", type=int, default=CHUNK_OVERLAP)
     parser.add_argument("--repeats",       type=int, default=1)
     parser.add_argument("--retrieval-only", action="store_true")
+    parser.add_argument("--risk-only", action="store_true",
+                        help="risk scores vs labels/risk_labels.csv, no Q&A")
     args = parser.parse_args()
     # Model output can contain characters the Windows console codepage lacks.
     sys.stdout.reconfigure(encoding="utf-8")
@@ -184,12 +313,16 @@ def main():
     result  = {"setting": label, "temperature": LLM_TEMPERATURE,
                "retrieval": check_retrieval(store), "runs": []}
 
-    if not args.retrieval_only:
+    if args.risk_only:
+        print("\nRisk scoring, one call at a time")
+        result["risk"] = run_risk_vs_labels(store, load_filings())
+    elif not args.retrieval_only:
         for n in range(args.repeats):
             print(f"\nLLM run {n + 1}/{args.repeats}")
             result["runs"].append(run_llm_metrics(store, tickers))
 
-    out = EVAL_DIR / "results" / f"{label}_{datetime.now():%Y%m%d-%H%M%S}.json"
+    prefix = "risk_" if args.risk_only else ""
+    out = EVAL_DIR / "results" / f"{prefix}{label}_{datetime.now():%Y%m%d-%H%M%S}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
 
@@ -211,6 +344,8 @@ def main():
         for ticker, answers in run["qa"].items():
             for name, record in answers.items():
                 print(f"    {ticker:5} {name:11} {describe_citations(record)}")
+    if "risk" in result:
+        print_risk_report(result["risk"])
     print(f"\nSaved {out}")
 
 
