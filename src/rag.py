@@ -1,4 +1,5 @@
 import re
+from decimal import Decimal
 
 from groq import Groq
 from langchain_core.documents import Document
@@ -69,11 +70,49 @@ def passages(docs, answer):
              "text": doc.page_content, "cited": n in cited}
             for n, doc in enumerate(docs, 1)]
 
+# A number in an answer, with its "$" and "%" if any; not the tail of a word
+# ("FY2025", "Q4") or part of a longer number.
+ANSWER_NUMBER  = re.compile(r"(?<![\w.,])(\$\s*\(?)?(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)"
+                            r"(?!\d|[.,]\d)(\s*%)?")
+PASSAGE_NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
+YEAR_NUMBER    = re.compile(r"(19|20)\d\d")
+
+def number_value(text):
+    return Decimal(text.replace(",", "")).normalize()
+
+def answer_figures(answer):
+    """Figures stated in the answer: numbers with a "$", "%", thousands separator
+    or decimals, or of three or more digits. Plain years, citation markers and
+    small counts ("Item 7", "3 years") are left out."""
+    figures = []
+    for match in ANSWER_NUMBER.finditer(CITATION.sub("", answer)):
+        dollar, number, percent = match.groups()
+        if not (dollar or percent or "," in number or "." in number or len(number) >= 3):
+            continue
+        if not (dollar or percent) and YEAR_NUMBER.fullmatch(number):
+            continue
+        if match.group(0).strip() not in figures:
+            figures.append(match.group(0).strip())
+    return figures
+
+def unverified_figures(answer, cited_passages):
+    """Figures in the answer whose value appears in none of the cited passages.
+    Values are compared without "$", "%", signs or thousands separators, so
+    "$11,348 million" matches a table cell "11,348". A warning only: a figure
+    can appear in a cited passage on a different line than the answer implies."""
+    values = {number_value(n) for p in cited_passages
+              for n in PASSAGE_NUMBER.findall(p["text"])}
+    return [figure for figure in answer_figures(answer)
+            if number_value(ANSWER_NUMBER.search(figure).group(2)) not in values]
+
 def check_answer(answer, passages):
-    """Cited passage numbers, and those that match no passage."""
+    """Cited passage numbers, those that match no passage, and the answer's
+    figures that are not in any cited passage."""
     cited = cited_numbers(answer)
-    return {"cited":             cited,
-            "invalid_citations": [n for n in cited if not 1 <= n <= len(passages)]}
+    return {"cited":              cited,
+            "invalid_citations":  [n for n in cited if not 1 <= n <= len(passages)],
+            "unverified_figures": unverified_figures(
+                answer, [p for p in passages if p["n"] in cited])}
 
 QA_K        = 3  # best matches anywhere in the selected filing
 QA_ITEM_8_K = 1  # plus the best match from the financial statements

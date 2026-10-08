@@ -1,7 +1,7 @@
 import re
 from types import SimpleNamespace
 
-from rag import (check_answer, cited_numbers, numbered_context, passages, qa_prompt,
+from rag import (answer_figures, check_answer, cited_numbers, numbered_context, passages, qa_prompt,
                  retrieve_for_question, source_label)
 
 
@@ -129,3 +129,32 @@ def test_prompt_keeps_figure_rules_and_fills_in_context_and_question():
     assert "Never derive a figure" in prompt
     assert "label each figure with its fiscal year" in prompt
     assert "CONTEXT: CONTEXT TEXT QUESTION: How did net income change?" in prompt
+
+
+def test_answer_figures_skip_years_citations_and_small_counts():
+    answer = ("**FY2025**: revenue $94,827 million [2], up 3.5% from 2024 (Item 7, Q4); "
+              "margin 18% over 3 years; $97M VaR; 1,250 stores; 412 sites [1, 3].")
+    assert answer_figures(answer) == ["$94,827", "3.5%", "18%", "$97", "1,250", "412"]
+
+
+def test_figure_in_a_cited_passage_is_verified_whatever_its_formatting():
+    income = doc("8", 0)
+    income.page_content = "Net earnings attributable to PMI | 2025: $11,348 | Other | (338) | 4.5 %"
+    retrieved = passages([doc("7", 1), income], "")
+    answer    = "Net income was 11,348 million [2], other $(338) [2], rate 4.50% [2]."
+    assert check_answer(answer, retrieved)["unverified_figures"] == []
+
+
+def test_figure_only_in_an_uncited_passage_is_unverified():
+    uncited, cited = doc("7", 1), doc("8", 0)
+    uncited.page_content, cited.page_content = "Revenue 47,941", "Revenue 47,061"
+    retrieved = passages([uncited, cited], "")
+    assert check_answer("Revenue was $47,941 [2] and $47,061 [2].", retrieved)[
+        "unverified_figures"] == ["$47,941"]
+
+
+def test_figures_in_an_answer_without_citations_are_all_unverified():
+    cited = doc("8", 0)
+    cited.page_content = "Revenue 47,941"
+    assert check_answer("Revenue was $47,941.", passages([cited], ""))[
+        "unverified_figures"] == ["$47,941"]
