@@ -93,25 +93,34 @@ def font_size(tag):
     return "0"
 
 
-def colspan(cell):
+def cell_span(cell, attribute):
     try:
-        return max(1, int(cell.get("colspan", 1)))
+        return max(1, int(cell.get(attribute, 1)))
     except ValueError:
         return 1
 
 
 def table_rows(table):
-    """Return each row's non-empty cells as [start_column, end_column, text]."""
-    rows = []
+    """Return each row's non-empty cells as [start_column, end_column, text].
+    Columns are counted as a browser lays them out: a cell with a rowspan also
+    fills its columns in the rows below, so cells there start after it.
+    Otherwise headers below a two-row cell (PM's "Financial Summary", Apple's
+    "Maturities") shift left and label the wrong values."""
+    rows, occupied = [], {}  # column -> further rows it is filled by a rowspan cell
     for tr in table.find_all("tr"):
-        cells, column = [], 0
+        cells, column, below = [], 0, {}
         for cell in tr.find_all(CELL_TAGS):
-            span = colspan(cell)
+            while occupied.get(column):
+                column += 1
+            width, height = cell_span(cell, "colspan"), cell_span(cell, "rowspan")
             text = re.sub(r"\s+", " ", cell.get_text(" ").replace("\xa0", " ")).strip()
             text = re.sub(r"(?<=[$(])\s+|\s+(?=[)%])", "", text)  # "( 338 )" -> "(338)"
             if text:
-                cells.append([column, column + span, text])
-            column += span
+                cells.append([column, column + width, text])
+            if height > 1:
+                below.update({c: height - 1 for c in range(column, column + width)})
+            column += width
+        occupied = {c: n - 1 for c, n in occupied.items() if n > 1} | below
         if cells:
             rows.append(merge_affixes(cells))
     return rows

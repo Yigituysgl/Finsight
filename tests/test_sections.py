@@ -262,3 +262,40 @@ def test_dash_entities_in_ascii_bytes_decode_to_dashes():
     assert lines[0] == "Revenue — total – 2025"
     assert "—" in lines[1]
     assert not any("�" in line for line in lines)
+
+
+# Reduced copies of two real tables whose first header cell spans two rows
+# (rowspan). The cells of the second header row start after it.
+PM_VARIANCE_TABLE = b"""<table>
+<tr><td rowspan="2">Financial Summary - Years Ended December 31,</td><td colspan="3"></td>
+    <td colspan="2">Change Fav./(Unfav.)</td><td colspan="2">Variance Fav./(Unfav.)</td></tr>
+<tr><td colspan="2">2025</td><td>2024</td><td>Total</td><td>Excl. Curr. &amp; Acquis. / Divest.</td>
+    <td>Total</td><td>Cur- rency</td></tr>
+<tr><td>Net Revenues</td><td>$</td><td>40,648</td><td>$37,878</td><td>7.3%</td><td>6.5%</td>
+    <td>$2,770</td><td>$461</td></tr>
+</table>"""
+
+AAPL_TERM_DEBT_TABLE = b"""<table>
+<tr><td></td><td rowspan="2">Maturities (calendar year)</td><td rowspan="2"></td>
+    <td colspan="2">2025</td><td colspan="2">2024</td></tr>
+<tr><td></td><td>Amount (in millions)</td><td>Effective Interest Rate</td>
+    <td>Amount (in millions)</td><td>Effective Interest Rate</td></tr>
+<tr><td>Fixed-rate 0.000% &#8211; 4.850% notes</td><td>2025 &#8211; 2062</td><td></td>
+    <td>$86,781</td><td>0.03% &#8211; 5.75%</td><td>$97,341</td><td>0.03% &#8211; 6.65%</td></tr>
+</table>"""
+
+
+def test_pm_variance_table_reads_currency_under_its_own_header():
+    row = next(line for line in html_to_lines(PM_VARIANCE_TABLE) if line.startswith("Net Revenues"))
+    assert row == ("Net Revenues | 2025: $40,648 | 2024: $37,878"
+                   " | Change Fav./(Unfav.) Total: 7.3%"
+                   " | Change Fav./(Unfav.) Excl. Curr. & Acquis. / Divest.: 6.5%"
+                   " | Variance Fav./(Unfav.) Total: $2,770"
+                   " | Variance Fav./(Unfav.) Cur- rency: $461")
+
+
+def test_aapl_term_debt_table_reads_amounts_and_rates_under_their_years():
+    row = next(line for line in html_to_lines(AAPL_TERM_DEBT_TABLE) if line.startswith("Fixed-rate"))
+    assert row == ("Fixed-rate 0.000% – 4.850% notes | Maturities (calendar year): 2025 – 2062"
+                   " | 2025 Amount (in millions): $86,781 | 2025 Effective Interest Rate: 0.03% – 5.75%"
+                   " | 2024 Amount (in millions): $97,341 | 2024 Effective Interest Rate: 0.03% – 6.65%")
