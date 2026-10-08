@@ -139,6 +139,10 @@ for interest rate, the scoring was run again.
 largest miss shrank from 6 points to 2, and the total gap from 13 to 8. No
 category was left unscored (0 of 24 n/a).
 
+Tesla FX moved the other way (from +1 to -2): the model placed Tesla's ~50%
+foreign revenue in the 'with hedging' band although Tesla does not typically
+hedge.
+
 Reproduce with:
 
 ```bash
@@ -236,7 +240,7 @@ locally and not committed.
 ## Author
 
 **Yigit Uysaloglu**
-- LinkedIn: [linkedin](<YOUR LINKEDIN URL>)
+- LinkedIn: [linkedin.com/in/yigit-uysaloglu](https://www.linkedin.com/in/yigit-uysaloglu/)
 - GitHub: [github.com/Yigituysgl](https://github.com/Yigituysgl)
 
 ## License
