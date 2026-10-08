@@ -12,7 +12,8 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 
 from config import COLLECTION_NAME, EMBED_MODEL, VECTORSTORE_DIR
 from fetch_filings import cache_path, filing_url, load_filings
-from sections import KEEP, describe_7a, split_sections, statement_parts
+from sections import (INCOME, KEEP, ScaleLineError, describe_7a, scale_lines,
+                      split_sections, statement_parts)
 
 # Large enough to keep most financial-statement tables in one chunk, small
 # enough to fit the embedding model: all-MiniLM-L6-v2 reads only the first
@@ -73,6 +74,15 @@ def main():
     print("[1/2] Splitting filings into Items and chunks...")
     for filing in filings:
         sections = split_sections(cache_path(filing).read_bytes())
+        # The risk scorer reads the pinned scale rows from the income statement;
+        # stop here rather than build a store it cannot use.
+        item_8 = next((s for s in sections if s["section"] == "8"), None)
+        income = "\n".join(text for kind, text in statement_parts(item_8)
+                           if kind == INCOME) if item_8 else ""
+        try:
+            scale_lines(income, filing)
+        except ScaleLineError as error:
+            sys.exit(f"Scale rows not found: {error}")
         t, m, i  = chunk_filing(filing, sections, splitter)
         texts, metadatas, ids = texts + t, metadatas + m, ids + i
         item_7a = next((s for s in sections if s["section"] == "7A"), None)

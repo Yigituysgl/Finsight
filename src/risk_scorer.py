@@ -2,9 +2,11 @@ import re
 from collections import Counter
 from groq import Groq
 
+from langchain_core.documents import Document
+
 from config import GROQ_API_KEY, GROQ_MODEL, LLM_TEMPERATURE
-from rag import load_vectorstore
-from sections import SHORT_UNRESOLVED
+from rag import income_statement, load_vectorstore
+from sections import SHORT_UNRESOLVED, ScaleLineError, scale_lines
 
 # gpt-oss is a reasoning model: its reasoning tokens count against
 # max_tokens, so the limits must leave room for reasoning plus the answer.
@@ -40,6 +42,20 @@ RISK_CATEGORIES = {
 # When a filing's Item 7A is a pointer that could not be resolved, categories
 # that read 7A also read Item 7, where the market risk discussion usually is.
 FALLBACK_ITEM_7_CHUNKS = 2
+
+def scale_passage(vectorstore, filing):
+    """The company's scale for the scoring prompt: its revenue, operating
+    income and net income rows (all years) from the stored income statement,
+    with the statement's units line. Raises ScaleLineError if a pinned row is
+    missing."""
+    docs = income_statement(vectorstore, filing["ticker"])
+    if not docs:
+        raise ScaleLineError(f"{filing['ticker']}: no income-statement chunks in the store")
+    # Chunks split at line breaks, and overlapping chunks repeat lines.
+    rows, units = scale_lines("\n".join(doc.page_content for doc in docs), filing)
+    text = "\n".join([units] * bool(units) + list(rows.values()))
+    # Not a stored chunk: chunk_index -1 keeps it apart from real chunks.
+    return Document(page_content=text, metadata={**docs[0].metadata, "chunk_index": -1})
 
 def item_7a_source(vectorstore, ticker):
     """How the filing's Item 7A text was obtained (own / pointer_resolved / short_unresolved)."""

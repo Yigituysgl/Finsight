@@ -1,7 +1,11 @@
 from types import SimpleNamespace
 
-from risk_scorer import (RISK_CATEGORIES, describe_read_from, retrieve,
+import pytest
+
+import fetch_filings
+from risk_scorer import (RISK_CATEGORIES, describe_read_from, retrieve, scale_passage,
                          score_category, section_quotas)
+from sections import ScaleLineError
 
 
 class StubStore:
@@ -62,3 +66,51 @@ def test_short_section_returns_what_exists():
 
 def test_category_with_no_text_is_not_scored():
     assert score_category("FX Risk", []) == (None, "No text found in the Items this category reads")
+
+
+class IncomeStore:
+    """Returns the given chunks for the income-statement lookup."""
+    def __init__(self, chunks):
+        self.chunks = chunks
+
+    def get(self, where):
+        assert where == {"$and": [{"ticker": "KO"}, {"statement": "income"}]}
+        return {"documents": [text for text, _ in self.chunks],
+                "metadatas": [{"ticker": "KO", "section": "8", "statement": "income",
+                               "chunk_index": i} for _, i in self.chunks]}
+
+
+KO_FILING = {"ticker": "KO", "revenue_line": "Net Operating Revenues",
+             "operating_income_line": "Operating Income",
+             "net_income_line": "Net Income Attributable to Shareowners of The Coca-Cola Company"}
+
+
+def test_scale_passage_joins_the_pinned_rows_across_income_statement_chunks():
+    store = IncomeStore([
+        ("Operating Income | 2025: 13,762 | 2024: 9,992\n"
+         "Net Income Attributable to Shareowners of The Coca-Cola Company | 2025: $13,107", 3),
+        ("CONSOLIDATED STATEMENTS OF INCOME\n(In millions except per share data)\n"
+         "Net Operating Revenues | 2025: $47,941 | 2024: $47,061\n"
+         "Operating Income | 2025: 13,762 | 2024: 9,992", 2),
+    ])
+    passage = scale_passage(store, KO_FILING)
+    assert passage.page_content == "\n".join([
+        "(In millions except per share data)",
+        "Net Operating Revenues | 2025: $47,941 | 2024: $47,061",
+        "Operating Income | 2025: 13,762 | 2024: 9,992",
+        "Net Income Attributable to Shareowners of The Coca-Cola Company | 2025: $13,107"])
+    assert passage.metadata["statement"] == "income" and passage.metadata["chunk_index"] == -1
+
+
+def test_scale_passage_fails_without_income_statement_chunks():
+    with pytest.raises(ScaleLineError, match="no income-statement chunks"):
+        scale_passage(IncomeStore([]), KO_FILING)
+
+
+def test_load_filings_requires_the_scale_line_pins(tmp_path, monkeypatch):
+    config = tmp_path / "filings.toml"
+    config.write_text('[[filing]]\nticker = "KO"\nform = "10-K"\nrevenue_line = "Net Operating Revenues"\n',
+                      encoding="utf-8")
+    monkeypatch.setattr(fetch_filings, "FILINGS_CONFIG", config)
+    with pytest.raises(SystemExit, match="KO: operating_income_line, net_income_line not pinned"):
+        fetch_filings.load_filings()

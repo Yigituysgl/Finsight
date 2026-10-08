@@ -1,6 +1,9 @@
 # Pinned 10-K filings. Results stay reproducible when newer filings
 # appear; change a pin deliberately (see `python src/fetch_filings.py --list`).
 # fiscal_year is the year the 10-K covers; period_end is the fiscal year end.
+# revenue_line, operating_income_line and net_income_line name the income-statement
+# rows used as scale context in risk scoring, exactly as the parsed statement labels
+# them; net income is the line attributable to the company itself.
 
 [[filing]]
 ticker = "AAPL"
@@ -11,6 +14,9 @@ fiscal_year = 2025
 period_end = "2025-09-27"
 accession = "0000320193-25-000079"
 primary_document = "aapl-20250927.htm"
+revenue_line = "Total net sales"
+operating_income_line = "Operating income"
+net_income_line = "Net income"
 
 [[filing]]
 ticker = "TSLA"
@@ -21,6 +27,9 @@ fiscal_year = 2025
 period_end = "2025-12-31"
 accession = "0001628280-26-003952"
 primary_document = "tsla-20251231.htm"
+revenue_line = "Total revenues"
+operating_income_line = "Income from operations"
+net_income_line = "Net income attributable to common stockholders"
 
 [[filing]]
 ticker = "KO"
@@ -31,6 +40,9 @@ fiscal_year = 2025
 period_end = "2025-12-31"
 accession = "0001628280-26-010047"
 primary_document = "ko-20251231.htm"
+revenue_line = "Net Operating Revenues"
+operating_income_line = "Operating Income"
+net_income_line = "Net Income Attributable to Shareowners of The Coca-Cola Company"
 
 [[filing]]
 ticker = "PM"
@@ -41,3 +53,6 @@ fiscal_year = 2025
 period_end = "2025-12-31"
 accession = "0001628280-26-005939"
 primary_document = "pm-20251231.htm"
+revenue_line = "Net revenues 1 & 2 (Notes 5 & 11)"
+operating_income_line = "Operating income"
+net_income_line = "Net earnings attributable to PMI"

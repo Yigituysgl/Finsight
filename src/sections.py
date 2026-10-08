@@ -12,7 +12,7 @@ from collections import Counter
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 
 from config import DATA_DIR
-from fetch_filings import cache_path, load_filings
+from fetch_filings import SCALE_LINE_FIELDS, cache_path, load_filings
 
 SECTIONS_DIR = DATA_DIR / "sections"
 
@@ -337,6 +337,31 @@ def statement_parts(section):
             parts.append([kind, []])
         parts[-1][1].append(line)
     return [(kind, "\n".join(lines)) for kind, lines in parts if lines]
+
+
+class ScaleLineError(ValueError):
+    pass
+
+
+UNITS_LINE = re.compile(r"^\(in millions", re.IGNORECASE)
+
+
+def scale_lines(income_text, filing):
+    """The income statement's units line ("(In millions, ...") if present, and
+    its revenue, operating income and net income rows with all years shown:
+    ({name: row}, units). Each pinned name (filings.toml) must label exactly
+    one distinct row, "<name> | ..."."""
+    lines = income_text.split("\n")
+    rows  = {}
+    for name, field in SCALE_LINE_FIELDS.items():
+        label   = filing[field]
+        matches = sorted({line for line in lines if line.startswith(f"{label} |")})
+        if len(matches) != 1:
+            raise ScaleLineError(f"{filing['ticker']}: {len(matches)} income-statement rows "
+                                 f"labelled {label!r} ({field} in filings.toml)")
+        rows[name] = matches[0]
+    units = next((line for line in lines if UNITS_LINE.match(line)), None)
+    return rows, units
 
 
 def describe_7a(section):

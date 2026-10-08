@@ -17,6 +17,10 @@ TICKERS_URL     = "https://www.sec.gov/files/company_tickers.json"
 SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
 ARCHIVE_URL     = "https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/{document}"
 
+# Income-statement rows each filing pins for the risk scorer's scale context.
+SCALE_LINE_FIELDS = {"revenue": "revenue_line", "operating_income": "operating_income_line",
+                     "net_income": "net_income_line"}
+
 # SEC allows at most 10 requests per second; stay well below that.
 MIN_INTERVAL = 0.2
 MAX_ATTEMPTS = 3
@@ -67,6 +71,9 @@ def load_filings():
     for filing in filings:
         if filing["form"] != "10-K":
             sys.exit(f"{filing['ticker']}: form {filing['form']!r} is not allowed; only '10-K'.")
+        missing = [field for field in SCALE_LINE_FIELDS.values() if not filing.get(field)]
+        if missing:
+            sys.exit(f"{filing['ticker']}: {', '.join(missing)} not pinned in {FILINGS_CONFIG.name}.")
     return filings
 
 

@@ -1,5 +1,7 @@
-from sections import (BALANCE_SHEET, CASH_FLOW, INCOME, html_to_lines, split_sections,
-                      statement_parts, strip_page_footers)
+import pytest
+
+from sections import (BALANCE_SHEET, CASH_FLOW, INCOME, ScaleLineError, html_to_lines,
+                      scale_lines, split_sections, statement_parts, strip_page_footers)
 
 BODY = "Body text. " * 60  # long enough to read as a section, not a TOC entry
 
@@ -299,3 +301,35 @@ def test_aapl_term_debt_table_reads_amounts_and_rates_under_their_years():
     assert row == ("Fixed-rate 0.000% – 4.850% notes | Maturities (calendar year): 2025 – 2062"
                    " | 2025 Amount (in millions): $86,781 | 2025 Effective Interest Rate: 0.03% – 5.75%"
                    " | 2024 Amount (in millions): $97,341 | 2024 Effective Interest Rate: 0.03% – 6.65%")
+
+
+SCALE_FILING = {"ticker": "TSLA", "revenue_line": "Total revenues",
+                "operating_income_line": "Income from operations",
+                "net_income_line": "Net income attributable to common stockholders"}
+INCOME_TEXT = "\n".join([
+    "Consolidated Statements of Operations",
+    "(in millions, except per share data)",
+    "Total automotive revenues | 2025: 69,526 | 2024: 77,070",
+    "Total revenues | 2025: 94,827 | 2024: 97,690",
+    "Income from operations | 2025: 4,355 | 2024: 7,076",
+    "Net income | 2025: 3,855 | 2024: 7,153",
+    "Net income attributable to common stockholders | 2025: $3,794 | 2024: $7,091",
+    "Net income attributable to common stockholders | 2025: $3,794 | 2024: $7,091",  # chunk overlap
+])
+
+
+def test_scale_lines_are_the_pinned_rows_with_all_years_and_the_units():
+    rows, units = scale_lines(INCOME_TEXT, SCALE_FILING)
+    assert rows == {"revenue":          "Total revenues | 2025: 94,827 | 2024: 97,690",
+                    "operating_income": "Income from operations | 2025: 4,355 | 2024: 7,076",
+                    "net_income":       "Net income attributable to common stockholders"
+                                        " | 2025: $3,794 | 2024: $7,091"}
+    assert units == "(in millions, except per share data)"
+
+
+def test_scale_lines_fail_when_a_pinned_row_is_missing_or_ambiguous():
+    with pytest.raises(ScaleLineError, match="0 income-statement rows labelled 'Revenues'"):
+        scale_lines(INCOME_TEXT, {**SCALE_FILING, "revenue_line": "Revenues"})
+    ambiguous = INCOME_TEXT + "\nTotal revenues | 2025: 1 | 2024: 2"
+    with pytest.raises(ScaleLineError, match="2 income-statement rows labelled 'Total revenues'"):
+        scale_lines(ambiguous, SCALE_FILING)
