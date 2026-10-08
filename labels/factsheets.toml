@@ -1,0 +1,794 @@
+# Facts for the labeling fact sheets (scripts/build_factsheets.py).
+#
+# Each fact is a verbatim quote from the parsed filing. The build checks that it
+# appears on exactly one distinct line of the given Item (and of the given
+# primary statement, if one is named), and reads `value` out of the quote.
+# Ratios are computed from those values; a numerator term starting with "-"
+# is subtracted. Units: "millions" or "billions" of dollars, or "percent".
+# topic: "scale", "fx" or "interest_rate".
+
+# ---------------------------------------------------------------- Apple
+[AAPL]
+notes = [
+  "The Item 8 term-debt table is misaligned by the parser (e.g. \"2025 Effective Interest Rate: $86,781\"), so debt figures are quoted from Item 7 instead.",
+]
+
+[[AAPL.facts]]
+id = "revenue"
+topic = "scale"
+label = "Total net sales"
+section = "8"
+statement = "income"
+quote = "Total net sales | September 27, 2025: 416,161 | September 28, 2024: 391,035 | September 30, 2023: 383,285"
+value = "416,161"
+unit = "millions"
+
+[[AAPL.facts]]
+id = "operating_income"
+topic = "scale"
+label = "Operating income"
+section = "8"
+statement = "income"
+quote = "Operating income | September 27, 2025: 133,050 | September 28, 2024: 123,216 | September 30, 2023: 114,301"
+value = "133,050"
+unit = "millions"
+
+[[AAPL.facts]]
+id = "net_income"
+topic = "scale"
+label = "Net income"
+section = "8"
+statement = "income"
+quote = "Net income | September 27, 2025: $112,010 | September 28, 2024: $93,736 | September 30, 2023: $96,995"
+value = "112,010"
+unit = "millions"
+
+[[AAPL.facts]]
+id = "us_sales"
+topic = "fx"
+label = "Net sales, U.S."
+section = "8"
+quote = "U.S. | 2025: $151,790 | 2024: $142,196 | 2023: $138,573"
+value = "151,790"
+unit = "millions"
+
+[[AAPL.facts]]
+id = "china_sales"
+topic = "fx"
+label = "Net sales, China"
+section = "8"
+quote = "China (1) | 2025: 64,377 | 2024: 66,952 | 2023: 72,559"
+value = "64,377"
+unit = "millions"
+
+[[AAPL.facts]]
+id = "other_sales"
+topic = "fx"
+label = "Net sales, other countries"
+section = "8"
+quote = "Other countries | 2025: 199,994 | 2024: 181,887 | 2023: 172,153"
+value = "199,994"
+unit = "millions"
+
+[[AAPL.facts]]
+id = "fx_var"
+topic = "fx"
+label = "VaR of foreign currency derivative positions (95%, one day)"
+section = "7A"
+quote = "the Company estimates, with 95% confidence, a maximum one-day loss in fair value of $590 million and $538 million as of September 27, 2025 and September 28, 2024, respectively"
+value = "590"
+unit = "millions"
+
+[[AAPL.facts]]
+id = "fx_var_scope"
+topic = "fx"
+label = "VaR scope"
+section = "7A"
+quote = "Changes in the Company’s underlying foreign currency exposures, which were excluded from the assessment, generally offset changes in the fair values of the Company’s foreign currency derivatives."
+
+[[AAPL.facts]]
+id = "fx_hedging_policy"
+topic = "fx"
+label = "Hedging policy"
+section = "7A"
+quote = "However, the Company may choose to not hedge certain foreign currency exposures for a variety of reasons, including accounting considerations or prohibitive cost."
+
+[[AAPL.facts]]
+id = "fx_impact"
+topic = "fx"
+label = "FX impact on 2025 net sales"
+section = "7"
+quote = "The weakness in foreign currencies relative to the U.S. dollar had an unfavorable year-over-year impact on Americas net sales during 2025."
+
+[[AAPL.facts]]
+id = "ir_portfolio"
+topic = "interest_rate"
+label = "+100bp: investment portfolio"
+section = "7A"
+quote = "Investment portfolio | Hypothetical Interest Rate Increase: 100 basis points, all tenors | Potential Impact: Decline in fair value | 2025: $2,416 | 2024: $2,755"
+value = "2,416"
+unit = "millions"
+
+[[AAPL.facts]]
+id = "ir_term_debt"
+topic = "interest_rate"
+label = "+100bp: term debt"
+section = "7A"
+quote = "Term debt | Hypothetical Interest Rate Increase: 100 basis points, all tenors | Potential Impact: Increase in annual interest expense | 2025: $129 | 2024: $139"
+value = "129"
+unit = "millions"
+
+[[AAPL.facts]]
+id = "notes"
+topic = "interest_rate"
+label = "Fixed-rate notes outstanding"
+section = "7"
+quote = "the Company had outstanding fixed-rate notes with varying maturities for an aggregate principal amount of $91.3 billion (collectively the “Notes”), with $12.4 billion payable within 12 months"
+value = "91.3"
+unit = "billions"
+
+[[AAPL.facts]]
+id = "notes_12m"
+topic = "interest_rate"
+label = "Notes payable within 12 months"
+section = "7"
+quote = "with $12.4 billion payable within 12 months. Future interest payments"
+value = "12.4"
+unit = "billions"
+
+[[AAPL.facts]]
+id = "commercial_paper"
+topic = "interest_rate"
+label = "Commercial paper outstanding"
+section = "7"
+quote = "As of September 27, 2025, the Company had $8.0 billion of commercial paper outstanding, which was payable within 12 months."
+value = "8.0"
+unit = "billions"
+
+[[AAPL.facts]]
+id = "fair_value_hedged_debt"
+topic = "interest_rate"
+label = "Term debt in fair value hedges"
+section = "8"
+quote = "the carrying amount of the Company’s current and non-current term debt subject to fair value hedges was $12.6 billion and $13.5 billion, respectively"
+value = "12.6"
+unit = "billions"
+
+[[AAPL.facts]]
+id = "cash"
+topic = "interest_rate"
+label = "Cash, cash equivalents and marketable securities"
+section = "7"
+quote = "which totaled $132.4 billion as of September 27, 2025"
+value = "132.4"
+unit = "billions"
+
+[[AAPL.ratios]]
+topic = "fx"
+label = "Net sales outside the U.S. / total net sales"
+numerator = ["china_sales", "other_sales"]
+denominator = ["revenue"]
+
+[[AAPL.ratios]]
+topic = "interest_rate"
+label = "+100bp interest expense on term debt / net income"
+numerator = ["ir_term_debt"]
+denominator = ["net_income"]
+
+[[AAPL.ratios]]
+topic = "interest_rate"
+label = "+100bp portfolio fair value decline / net income"
+numerator = ["ir_portfolio"]
+denominator = ["net_income"]
+
+[[AAPL.ratios]]
+topic = "interest_rate"
+label = "Term debt in fair value hedges (carrying) / notes principal"
+numerator = ["fair_value_hedged_debt"]
+denominator = ["notes"]
+
+[[AAPL.ratios]]
+topic = "interest_rate"
+label = "(Notes + commercial paper) / cash and marketable securities"
+numerator = ["notes", "commercial_paper"]
+denominator = ["cash"]
+
+[[AAPL.ratios]]
+topic = "interest_rate"
+label = "(Notes due within 12 months + commercial paper) / cash and marketable securities"
+numerator = ["notes_12m", "commercial_paper"]
+denominator = ["cash"]
+
+# ---------------------------------------------------------------- Tesla
+[TSLA]
+notes = [
+  "Item 7A of this filing discusses foreign currency risk only; it gives no interest rate sensitivity.",
+]
+
+[[TSLA.facts]]
+id = "revenue"
+topic = "scale"
+label = "Total revenues"
+section = "8"
+statement = "income"
+quote = "Total revenues | 2025: 94,827 | 2024: 97,690 | 2023: 96,773"
+value = "94,827"
+unit = "millions"
+
+[[TSLA.facts]]
+id = "operating_income"
+topic = "scale"
+label = "Income from operations"
+section = "8"
+statement = "income"
+quote = "Income from operations | 2025: 4,355 | 2024: 7,076 | 2023: 8,891"
+value = "4,355"
+unit = "millions"
+
+[[TSLA.facts]]
+id = "net_income"
+topic = "scale"
+label = "Net income attributable to common stockholders"
+section = "8"
+statement = "income"
+quote = "Net income attributable to common stockholders | 2025: $3,794 | 2024: $7,091 | 2023: $14,997"
+value = "3,794"
+unit = "millions"
+
+[[TSLA.facts]]
+id = "us_revenue"
+topic = "fx"
+label = "Revenues, United States"
+section = "8"
+quote = "United States | 2025: $47,627 | 2024: $47,725 | 2023: $45,235"
+value = "47,627"
+unit = "millions"
+
+[[TSLA.facts]]
+id = "china_revenue"
+topic = "fx"
+label = "Revenues, China"
+section = "8"
+quote = "China | 2025: 20,962 | 2024: 20,944 | 2023: 21,745"
+value = "20,962"
+unit = "millions"
+
+[[TSLA.facts]]
+id = "other_revenue"
+topic = "fx"
+label = "Revenues, other international"
+section = "8"
+quote = "Other international | 2025: 26,238 | 2024: 29,021 | 2023: 29,793"
+value = "26,238"
+unit = "millions"
+
+[[TSLA.facts]]
+id = "fx_hedging_policy"
+topic = "fx"
+label = "Hedging policy"
+section = "7A"
+quote = "Accordingly, changes in exchange rates affect our operating results as expressed in U.S. dollars as we do not typically hedge foreign currency risk."
+
+[[TSLA.facts]]
+id = "fx_sensitivity"
+topic = "fx"
+label = "10% adverse FX move on non-local-currency monetary items (pre-tax, unhedged)"
+section = "7A"
+quote = "These changes would have resulted in a gain or loss of $1.70 billion at December 31, 2025 and $1.15 billion at December 31, 2024, assuming no foreign currency hedging."
+value = "1.70"
+unit = "billions"
+
+[[TSLA.facts]]
+id = "foreign_cash"
+topic = "fx"
+label = "Cash held in foreign currencies"
+section = "7"
+quote = "Balances held in foreign currencies had a U.S. dollar equivalent of $4.37 billion and consisted primarily of Chinese yuan and euro."
+value = "4.37"
+unit = "billions"
+
+[[TSLA.facts]]
+id = "total_debt"
+topic = "interest_rate"
+label = "Total debt (unpaid principal)"
+section = "8"
+quote = "Total debt | Net Carrying Value Current: 1,569 | Net Carrying Value Long-Term: 6,584 | Unpaid Principal Balance: $8,177 | Unused Committed Amount (1): $6,429"
+value = "8,177"
+unit = "millions"
+
+[[TSLA.facts]]
+id = "maturities_2026"
+topic = "interest_rate"
+label = "Debt principal maturing in 2026"
+section = "8"
+quote = "2026 | Recourse debt: $1 | Non-recourse debt: $1,575 | Total: $1,576"
+value = "1,576"
+unit = "millions"
+
+[[TSLA.facts]]
+id = "china_facility"
+topic = "interest_rate"
+label = "China Working Capital Facility"
+section = "8"
+quote = "China Working Capital Facility | Net Carrying Value Current: — | Net Carrying Value Long-Term: 4,288 | Unpaid Principal Balance: 4,288 | Unused Committed Amount (1): 1,429 | Contractual Interest Rates: 2.01 - 2.11% | Contractual Maturity Date: March 2026 - December 2026 (2)"
+value = "4,288"
+unit = "millions"
+
+[[TSLA.facts]]
+id = "cash"
+topic = "interest_rate"
+label = "Cash and cash equivalents"
+section = "7"
+quote = "As of December 31, 2025, we had $16.51 billion and $27.55 billion of cash and cash equivalents and short-term investments, respectively."
+value = "16.51"
+unit = "billions"
+
+[[TSLA.facts]]
+id = "short_term_investments"
+topic = "interest_rate"
+label = "Short-term investments"
+section = "7"
+quote = "$27.55 billion of cash and cash equivalents and short-term investments, respectively"
+value = "27.55"
+unit = "billions"
+
+[[TSLA.facts]]
+id = "interest_expense"
+topic = "interest_rate"
+label = "Interest expense"
+section = "8"
+statement = "income"
+quote = "Interest expense | 2025: (338) | 2024: (350) | 2023: (156)"
+value = "338"
+unit = "millions"
+
+[[TSLA.facts]]
+id = "interest_income"
+topic = "interest_rate"
+label = "Interest income"
+section = "8"
+statement = "income"
+quote = "Interest income | 2025: 1,680 | 2024: 1,569 | 2023: 1,066"
+value = "1,680"
+unit = "millions"
+
+[[TSLA.ratios]]
+topic = "fx"
+label = "Revenues outside the U.S. / total revenues"
+numerator = ["china_revenue", "other_revenue"]
+denominator = ["revenue"]
+
+[[TSLA.ratios]]
+topic = "fx"
+label = "10% FX sensitivity / total revenues"
+numerator = ["fx_sensitivity"]
+denominator = ["revenue"]
+
+[[TSLA.ratios]]
+topic = "fx"
+label = "10% FX sensitivity / income from operations"
+numerator = ["fx_sensitivity"]
+denominator = ["operating_income"]
+
+[[TSLA.ratios]]
+topic = "interest_rate"
+label = "Total debt / (cash + short-term investments)"
+numerator = ["total_debt"]
+denominator = ["cash", "short_term_investments"]
+
+[[TSLA.ratios]]
+topic = "interest_rate"
+label = "Interest expense / income from operations"
+numerator = ["interest_expense"]
+denominator = ["operating_income"]
+
+[[TSLA.ratios]]
+topic = "interest_rate"
+label = "2026 maturities / (cash + short-term investments)"
+numerator = ["maturities_2026"]
+denominator = ["cash", "short_term_investments"]
+
+# ---------------------------------------------------------------- Coca-Cola
+[KO]
+notes = [
+  "Item 8 also contains other tables with lines named like the balance-sheet debt lines (e.g. \"Long-term debt | 2025: 850\"); the figures here are from the balance sheet.",
+]
+
+[[KO.facts]]
+id = "revenue"
+topic = "scale"
+label = "Net Operating Revenues"
+section = "8"
+statement = "income"
+quote = "Net Operating Revenues | 2025: $47,941 | 2024: $47,061 | 2023: $45,754"
+value = "47,941"
+unit = "millions"
+
+[[KO.facts]]
+id = "operating_income"
+topic = "scale"
+label = "Operating Income"
+section = "8"
+statement = "income"
+quote = "Operating Income | 2025: 13,762 | 2024: 9,992 | 2023: 11,311"
+value = "13,762"
+unit = "millions"
+
+[[KO.facts]]
+id = "net_income"
+topic = "scale"
+label = "Net Income Attributable to Shareowners of The Coca-Cola Company"
+section = "8"
+statement = "income"
+quote = "Net Income Attributable to Shareowners of The Coca-Cola Company | 2025: $13,107 | 2024: $10,631 | 2023: $10,714"
+value = "13,107"
+unit = "millions"
+
+[[KO.facts]]
+id = "foreign_revenue"
+topic = "fx"
+label = "Net operating revenues outside the U.S."
+section = "7A"
+quote = "In 2025, we generated $28.8 billion of our net operating revenues from operations outside the United States."
+value = "28.8"
+unit = "billions"
+
+[[KO.facts]]
+id = "fx_impact_revenue"
+topic = "fx"
+label = "FX impact on 2025 net operating revenues (after hedging)"
+section = "7"
+quote = "Fluctuations in foreign currency exchange rates, including the effects of our hedging activities, unfavorably impacted our consolidated net operating revenues by 2%."
+value = "2"
+unit = "percent"
+
+[[KO.facts]]
+id = "fx_impact_operating_income"
+topic = "fx"
+label = "FX impact on 2025 operating income (after hedging)"
+section = "7"
+quote = "In 2025, fluctuations in foreign currency exchange rates, including the effects of our hedging activities, unfavorably impacted consolidated operating income by 12% due to a stronger U.S. dollar compared to certain foreign currencies, including the Mexican peso, Argentine peso, Brazilian real and Turkish lira"
+value = "12"
+unit = "percent"
+
+[[KO.facts]]
+id = "fx_outlook"
+topic = "fx"
+label = "2026 outlook"
+section = "7"
+quote = "Based on current spot rates and our hedging coverage in place, we expect foreign currency exchange rate fluctuations will have a favorable impact on our full year 2026 net operating revenues."
+
+[[KO.facts]]
+id = "fx_notional"
+topic = "fx"
+label = "Notional of foreign currency derivatives"
+section = "7A"
+quote = "The total notional values of our foreign currency derivatives were $21,128 million and $18,442 million as of December 31, 2025 and 2024, respectively."
+value = "21,128"
+unit = "millions"
+
+[[KO.facts]]
+id = "fx_hedge_sensitivity"
+topic = "fx"
+label = "10% USD weakening: derivatives in hedge accounting"
+section = "7A"
+quote = "we estimate that a 10% weakening of the U.S. dollar would have resulted in a $609 million decrease in fair value"
+value = "609"
+unit = "millions"
+
+[[KO.facts]]
+id = "fx_economic_hedge_sensitivity"
+topic = "fx"
+label = "10% USD weakening: economic hedges"
+section = "7A"
+quote = "we estimate that a 10% weakening of the U.S. dollar would have resulted in a $123 million decrease in fair value"
+value = "123"
+unit = "millions"
+
+[[KO.facts]]
+id = "ir_expense"
+topic = "interest_rate"
+label = "+1pp: interest expense"
+section = "7A"
+quote = "we estimate that a 1 percentage point increase in interest rates would have increased interest expense by $120 million in 2025"
+value = "120"
+unit = "millions"
+
+[[KO.facts]]
+id = "ir_portfolio"
+topic = "interest_rate"
+label = "+1pp: debt securities portfolio"
+section = "7A"
+quote = "We estimate that a 1 percentage point increase in interest rates would have resulted in a $39 million decrease in the fair value of our portfolio of highly liquid debt securities."
+value = "39"
+unit = "millions"
+
+[[KO.facts]]
+id = "loans_notes_payable"
+topic = "interest_rate"
+label = "Loans and notes payable"
+section = "8"
+statement = "balance_sheet"
+quote = "Loans and notes payable | 2025: 1,551 | 2024: 1,499"
+value = "1,551"
+unit = "millions"
+
+[[KO.facts]]
+id = "current_ltd"
+topic = "interest_rate"
+label = "Current maturities of long-term debt"
+section = "8"
+statement = "balance_sheet"
+quote = "Current maturities of long-term debt | 2025: 1,822 | 2024: 648"
+value = "1,822"
+unit = "millions"
+
+[[KO.facts]]
+id = "long_term_debt"
+topic = "interest_rate"
+label = "Long-term debt"
+section = "8"
+statement = "balance_sheet"
+quote = "Long-term debt | 2025: 42,119 | 2024: 42,375"
+value = "42,119"
+unit = "millions"
+
+[[KO.facts]]
+id = "fair_value_hedged_debt"
+topic = "interest_rate"
+label = "Long-term debt in fair value hedges (carrying value)"
+section = "8"
+quote = "Long-term debt | Carrying Values of Hedged Items December 31, 2025: 11,648"
+value = "11,648"
+unit = "millions"
+
+[[KO.facts]]
+id = "cash"
+topic = "interest_rate"
+label = "Cash, short-term investments and marketable securities"
+section = "7"
+quote = "The Company’s cash, cash equivalents, short-term investments and marketable securities totaled $15.8 billion as of December 31, 2025."
+value = "15.8"
+unit = "billions"
+
+[[KO.facts]]
+id = "interest_expense"
+topic = "interest_rate"
+label = "Interest expense"
+section = "8"
+statement = "income"
+quote = "Interest expense | 2025: 1,654 | 2024: 1,656 | 2023: 1,527"
+value = "1,654"
+unit = "millions"
+
+[[KO.ratios]]
+topic = "fx"
+label = "Revenues outside the U.S. / net operating revenues"
+numerator = ["foreign_revenue"]
+denominator = ["revenue"]
+
+[[KO.ratios]]
+topic = "fx"
+label = "FX derivative notional / revenues outside the U.S. (not a hedge ratio)"
+numerator = ["fx_notional"]
+denominator = ["foreign_revenue"]
+
+[[KO.ratios]]
+topic = "interest_rate"
+label = "+1pp interest expense / net income"
+numerator = ["ir_expense"]
+denominator = ["net_income"]
+
+[[KO.ratios]]
+topic = "interest_rate"
+label = "Debt (loans and notes + current and long-term debt) / cash and investments"
+numerator = ["loans_notes_payable", "current_ltd", "long_term_debt"]
+denominator = ["cash"]
+
+[[KO.ratios]]
+topic = "interest_rate"
+label = "Long-term debt in fair value hedges / long-term debt"
+numerator = ["fair_value_hedged_debt"]
+denominator = ["long_term_debt"]
+
+[[KO.ratios]]
+topic = "interest_rate"
+label = "Interest expense / operating income"
+numerator = ["interest_expense"]
+denominator = ["operating_income"]
+
+[[KO.ratios]]
+topic = "interest_rate"
+label = "(Loans and notes payable + current maturities) / cash and investments"
+numerator = ["loans_notes_payable", "current_ltd"]
+denominator = ["cash"]
+
+# ---------------------------------------------------------------- Philip Morris
+[PM]
+notes = [
+  "The Item 7 variance tables are misaligned by the parser: in the consolidated net revenues row, \"Excl. Curr. & Acquis. / Divest.: 7.3%\" is the reported change, \"Change: 6.5%\" is the change excluding currency and acquisitions/divestitures, and \"Currency: $2,770\" is the total variance (40,648 - 37,878). Read in order, the components are currency $461, acquisitions/divestitures $(170), price $1,536, volume/mix $920, cost/other $23 (sum 2,770). The prose quotes below are not affected.",
+  "Net revenues by country are disclosed only for Japan. The Americas segment includes the U.S., so revenue outside the Americas segment is a lower bound for revenue outside the U.S.",
+]
+
+[[PM.facts]]
+id = "revenue"
+topic = "scale"
+label = "Net revenues"
+section = "8"
+statement = "income"
+quote = "Net revenues 1 & 2 (Notes 5 & 11) | 2025: $40,648 | 2024: $37,878 | 2023: $35,174"
+value = "40,648"
+unit = "millions"
+
+[[PM.facts]]
+id = "operating_income"
+topic = "scale"
+label = "Operating income"
+section = "8"
+statement = "income"
+quote = "Operating income | 2025: 14,892 | 2024: 13,402 | 2023: 11,556"
+value = "14,892"
+unit = "millions"
+
+[[PM.facts]]
+id = "net_income"
+topic = "scale"
+label = "Net earnings attributable to PMI"
+section = "8"
+statement = "income"
+quote = "Net earnings attributable to PMI | 2025: $11,348 | 2024: $7,057 | 2023: $7,813"
+value = "11,348"
+unit = "millions"
+
+[[PM.facts]]
+id = "americas_revenue"
+topic = "fx"
+label = "Net revenues by segment (2025)"
+section = "8"
+quote = "Net revenues | Europe: $17,111 | SSEA, CIS & MEA: $12,051 | EA, AU & PMI GTR: $6,632 | Americas: $4,854 | Total: $40,648"
+value = "4,854"
+unit = "millions"
+
+[[PM.facts]]
+id = "japan_revenue"
+topic = "fx"
+label = "Net revenues, Japan (largest market)"
+section = "8"
+quote = "Total net revenues attributable to customers located in Japan, PMI's largest market in terms of net revenues, were $4.2 billion, $4.1 billion and $3.9 billion in 2025, 2024 and 2023, respectively."
+value = "4.2"
+unit = "billions"
+
+[[PM.facts]]
+id = "russia_share"
+topic = "fx"
+label = "Russia and Ukraine"
+section = "1A"
+quote = "In 2025, Russia accounted for around 9% of our total cigarette and heated tobacco unit shipment volume, and around 6% of our total net revenues."
+value = "6"
+unit = "percent"
+
+[[PM.facts]]
+id = "fx_effect_revenue"
+topic = "fx"
+label = "2025 net revenue growth, reported vs excluding currency and acquisitions/divestitures"
+section = "7"
+quote = "Net revenues increased by 7.3%. Net revenues, excluding currency and acquisitions/divestitures, increased by 6.5%"
+
+[[PM.facts]]
+id = "fx_effect_operating_income"
+topic = "fx"
+label = "2025 operating income growth, reported vs excluding currency and acquisitions/divestitures"
+section = "7"
+quote = "Operating income increased by 11.1%. Operating income, excluding currency and acquisitions/divestitures, increased by 9.3%"
+
+[[PM.facts]]
+id = "fx_var"
+topic = "fx"
+label = "VaR, instruments sensitive to foreign currency rates (95%, one day)"
+section = "7A"
+quote = "Foreign currency rates | At December 31, 2025: $97 | Average: $152 | High: $197 | Low: $97"
+value = "97"
+unit = "millions"
+
+[[PM.facts]]
+id = "fx_debt_derivatives"
+topic = "fx"
+label = "Foreign currency debt and derivatives"
+section = "7"
+quote = "Foreign currency denominated debt and the majority of our $50 billion gross notional amount of derivative financial instruments are subject to foreign currency exchange rates fluctuation, primarily between the Euro and U.S. Dollar"
+value = "50"
+unit = "billions"
+
+[[PM.facts]]
+id = "total_debt"
+topic = "interest_rate"
+label = "Total debt"
+section = "7"
+quote = "Our total debt was $48.8 billion at December 31, 2025, and $45.7 billion at December 31, 2024. Our total debt is primarily fixed rate in nature. The weighted-average time to maturity of our long-term debt was approximately 7 years at the end of 2025 and 2024."
+value = "48.8"
+unit = "billions"
+
+[[PM.facts]]
+id = "maturities_2026"
+topic = "interest_rate"
+label = "Long-term debt maturing in 2026 (aggregate maturities)"
+section = "8"
+quote = "2026 | $3,540"
+value = "3,540"
+unit = "millions"
+
+[[PM.facts]]
+id = "commercial_paper"
+topic = "interest_rate"
+label = "Commercial paper"
+section = "7"
+quote = "At December 31, 2025 and 2024, we had no commercial paper outstanding. The average commercial paper balance outstanding during 2025 and 2024 was $3.0 billion and $1.3 billion, respectively."
+
+[[PM.facts]]
+id = "ir_var"
+topic = "interest_rate"
+label = "VaR, instruments sensitive to interest rates (95%, one day)"
+section = "7A"
+quote = "Interest rates | At December 31, 2025: $135 | Average: $191 | High: $239 | Low: $135"
+value = "135"
+unit = "millions"
+
+[[PM.facts]]
+id = "variable_rate_effect"
+topic = "interest_rate"
+label = "2025 net interest expense and variable-rate debt"
+section = "7"
+quote = "Interest expense, net, of $966 million decreased by $177 million or 15.5%, primarily due to the impact of lower market interest rates on our variable-rate debt, as well as the favorable impact of derivative financial instruments."
+
+[[PM.facts]]
+id = "interest_expense_net"
+topic = "interest_rate"
+label = "Interest expense, net"
+section = "8"
+statement = "income"
+quote = "Interest expense, net (Note 13) | 2025: 966 | 2024: 1,143 | 2023: 1,061"
+value = "966"
+unit = "millions"
+
+[[PM.facts]]
+id = "interest_expense_gross"
+topic = "interest_rate"
+label = "Interest expense (gross, Note 13)"
+section = "8"
+quote = "Interest expense | 2025: $1,587 | 2024: $1,763 | 2023: $1,526"
+value = "1,587"
+unit = "millions"
+
+[[PM.facts]]
+id = "cash"
+topic = "interest_rate"
+label = "Cash and cash equivalents"
+section = "8"
+statement = "balance_sheet"
+quote = "Cash and cash equivalents | 2025: $4,872 | 2024: $4,216"
+value = "4,872"
+unit = "millions"
+
+[[PM.ratios]]
+topic = "fx"
+label = "Net revenues outside the Americas segment / net revenues"
+numerator = ["revenue", "-americas_revenue"]
+denominator = ["revenue"]
+
+[[PM.ratios]]
+topic = "interest_rate"
+label = "Total debt / cash and cash equivalents"
+numerator = ["total_debt"]
+denominator = ["cash"]
+
+[[PM.ratios]]
+topic = "interest_rate"
+label = "2026 maturities / cash and cash equivalents"
+numerator = ["maturities_2026"]
+denominator = ["cash"]
+
+[[PM.ratios]]
+topic = "interest_rate"
+label = "Interest expense, net / operating income"
+numerator = ["interest_expense_net"]
+denominator = ["operating_income"]
