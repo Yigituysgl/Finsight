@@ -12,7 +12,6 @@ everything relative to company size).
 
 ![Q&A: Philip Morris net income, answered with a cited passage from the income statement](docs/qa.png)
 ![Risk dashboard: Philip Morris, overall score 48 (Medium) and six category cards, from evaluation run 2](docs/risk.png)
-<!-- docs/demo.gif: selecting a filing, asking a question, running the risk analysis -->
 
 ## What it does
 
