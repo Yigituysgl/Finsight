@@ -53,6 +53,11 @@ def numbered_context(docs):
 # full-width style, "【2】", sometimes with a line reference, "【1†L1-L3】".
 CITATION = re.compile(r"[\[【](\d+(?:\s*,\s*\d+)*)(?:†[^\]】]*)?[\]】]")
 
+def display_citations(text):
+    """Every citation in the plain "[n]" style, for display: "【1】" and
+    "【1†L1-L3】" become "[1]"."""
+    return CITATION.sub(lambda match: f"[{match.group(1)}]", text)
+
 def cited_numbers(answer):
     """Passage numbers the answer cites, in order of first citation."""
     numbers = []
@@ -137,6 +142,21 @@ def check_answer(answer, passages, allow_approximate=False):
         check["approximate_ratios"] = list(dict.fromkeys(
             f"≈ {figure}" for figure, approximate in figure_matches(answer) if approximate))
     return check
+
+# Groq's free tier limits tokens per minute and per day; its 429 message says
+# which limit was hit and when to try again ("Please try again in 15m9.79s").
+RETRY_IN = re.compile(r"try again in ((?:\d+h)?(?:\d+m)?[\d.]+s)", re.IGNORECASE)
+
+def rate_limit_message(error):
+    """A short user-facing explanation of a Groq RateLimitError."""
+    text  = str(error)
+    daily = "per day" in text or "(TPD)" in text or "(RPD)" in text
+    wait  = RETRY_IN.search(text)
+    when  = f" Try again in about {re.sub(r'[.][0-9]+s', 's', wait.group(1))}." if wait else ""
+    if daily:
+        return ("The daily token limit of the free Groq tier has been reached, so no new "
+                f"model calls can be made for now.{when}")
+    return f"The Groq API is busy: its per-minute rate limit was reached.{when}"
 
 QA_K        = 3  # best matches anywhere in the selected filing
 QA_ITEM_8_K = 1  # plus the best match from the financial statements

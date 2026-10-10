@@ -99,6 +99,15 @@ NOTES = {
 }
 
 
+def risk_level(score):
+    """"Low", "Medium" or "High" for a 1-10 score (1-3, 4-6, 7-10), or for an
+    overall 0-100 score divided by 10 (under 40, 40-69, 70 and above); None
+    for an unscored category."""
+    if score is None:
+        return None
+    return "Low" if score < 4 else "Medium" if score < 7 else "High"
+
+
 def rubric_text(category):
     """The category's bands, one per line, followed by its note if it has one."""
     lines = [f"{low}-{high}: {text}" for low, high, text in BANDS[category]]

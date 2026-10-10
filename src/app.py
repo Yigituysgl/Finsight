@@ -3,14 +3,17 @@ import os
 import sys
 import streamlit as st
 import plotly.graph_objects as go
+from groq import RateLimitError
 
 sys.path.append(os.path.dirname(__file__))
 
 from config import GROQ_MODEL, VECTORSTORE_DIR
 from fetch_filings import load_filings
-from rag import load_vectorstore, has_documents, ask, check_answer
-from risk_scorer import run_risk_analysis
-from rubric import MIN_SCORED_CATEGORIES
+from rag import (load_vectorstore, has_documents, ask, check_answer, display_citations,
+                 rate_limit_message)
+from risk_cache import load_results, save_results
+from risk_scorer import run_risk_analysis, short_reason
+from rubric import MIN_SCORED_CATEGORIES, risk_level
 
 
 st.set_page_config(
@@ -38,10 +41,21 @@ st.markdown("""
         border-radius: 8px;
         margin: 0.5rem 0;
     }
-    .low-risk    { background-color: #d4edda; color: #155724; }
-    .medium-risk { background-color: #fff3cd; color: #856404; }
-    .high-risk   { background-color: #f8d7da; color: #721c24; }
-    .na-risk     { background-color: #e2e3e5; color: #383d41; }
+    .low-risk    { background-color: #d4edda; color: #155724; border-color: #28a745; }
+    .medium-risk { background-color: #fff3cd; color: #856404; border-color: #ffc107; }
+    .high-risk   { background-color: #f8d7da; color: #721c24; border-color: #dc3545; }
+    .na-risk     { background-color: #e2e3e5; color: #383d41; border-color: #6c757d; }
+    .risk-card {
+        padding: 0.55rem 0.75rem;
+        border-radius: 6px;
+        border-left: 6px solid;
+        margin: 0.6rem 0 0.25rem 0;
+        line-height: 1.35;
+    }
+    .risk-card .card-head  { display: flex; justify-content: space-between; font-weight: 600; }
+    .risk-card .card-score { font-size: 1.15rem; }
+    .risk-card .card-line  { font-size: 0.82rem; margin-top: 0.2rem; }
+    .overall-label { text-align: center; font-size: 1.05rem; font-weight: 600; margin-top: -0.5rem; }
     .chat-message {
         padding: 1rem;
         border-radius: 8px;
@@ -64,10 +78,15 @@ if "risk_results"  not in st.session_state:
     st.session_state.risk_results  = None
 if "doc_processed" not in st.session_state:
     st.session_state.doc_processed = False
+if "llm_error"     not in st.session_state:
+    st.session_state.llm_error     = None
 
+
+LEVEL_COLORS = {"Low": "#28a745", "Medium": "#ffc107", "High": "#dc3545"}
+LEVEL_CLASSES = {"Low": "low-risk", "Medium": "medium-risk", "High": "high-risk", None: "na-risk"}
 
 def create_gauge(score):
-    color = "#28a745" if score < 40 else "#ffc107" if score < 70 else "#dc3545"
+    color = LEVEL_COLORS[risk_level(score / 10)]
     fig = go.Figure(go.Indicator(
         mode  = "gauge+number",
         value = score,
@@ -82,23 +101,51 @@ def create_gauge(score):
             ]
         }
     ))
-    fig.update_layout(height=250, margin=dict(t=40, b=10, l=20, r=20))
+    # Side margins leave room for the "0" and "100" axis labels in a narrow column.
+    fig.update_layout(height=250, margin=dict(t=40, b=10, l=40, r=40))
     return fig
 
-def get_risk_color(score):
-    if score is None: return "na-risk",    "⚪"
-    if score <= 3:   return "low-risk",    "🟢 LOW"
-    elif score <= 6: return "medium-risk", "🟡 MEDIUM"
-    else:            return "high-risk",   "🔴 HIGH"
+def escaped(text):
+    """Model text for HTML: escaped, with "$" so amounts are not read as LaTeX."""
+    return html.escape(text).replace("$", "&#36;")
+
+def risk_card(category, score, reason):
+    level = risk_level(score)
+    score_text = "n/a" if score is None else f"{score}/10 · {level}"
+    return (f'<div class="risk-card {LEVEL_CLASSES[level]}">'
+            f'<div class="card-head"><span>{category.replace(" Risk", "")}</span>'
+            f'<span class="card-score">{score_text}</span></div>'
+            f'<div class="card-line">{escaped(short_reason(reason))}</div></div>')
+
+def run_and_cache_risk(filing):
+    """Run the analysis, cache it for the filing, and keep it in the session.
+    A Groq rate limit leaves the previous result in place and explains why."""
+    try:
+        with st.spinner("Analyzing risk across 6 categories..."):
+            overall, scores_dict, summary, read_from, evidence = run_risk_analysis(
+                st.session_state.vectorstore, ticker=filing["ticker"],
+                company_name=filing["company"])
+    except RateLimitError as error:
+        st.session_state.llm_error = rate_limit_message(error)
+        return
+    results = {"overall": overall, "scores_dict": scores_dict, "summary": summary,
+               "read_from": read_from, "evidence": evidence}
+    save_results(filing, results, source="App run")
+    st.session_state.risk_results = load_results(filing)
 
 def filing_label(filing):
     return f"{filing['company']} ({filing['ticker']}) · {filing['form']} FY{filing['fiscal_year']}"
 
 def ask_and_record(question):
     st.session_state.chat_history.append({"role": "user", "content": question})
-    with st.spinner("Thinking..."):
-        answer, passages = ask(question, st.session_state.vectorstore,
-                               st.session_state.filing["ticker"])
+    try:
+        with st.spinner("Thinking..."):
+            answer, passages = ask(question, st.session_state.vectorstore,
+                                   st.session_state.filing["ticker"])
+    except RateLimitError as error:
+        st.session_state.chat_history.pop()
+        st.session_state.llm_error = rate_limit_message(error)
+        return
     st.session_state.chat_history.append({
         "role":     "assistant",
         "content":  answer,
@@ -121,7 +168,7 @@ def show_check(check):
 
 def show_answer(msg):
     # Markdown reads "$...$" as LaTeX; answers are full of dollar amounts.
-    st.markdown(msg["content"].replace("$", r"\$"))
+    st.markdown(display_citations(msg["content"]).replace("$", r"\$"))
     show_check(msg["check"])
     for passage in msg["passages"]:
         if passage["cited"]:
@@ -164,7 +211,8 @@ with col_left:
             # Answers and scores belong to one company; start fresh on a switch.
             st.session_state.filing       = filing
             st.session_state.chat_history = []
-            st.session_state.risk_results = None
+            # A filing's last risk analysis is shown again without new model calls.
+            st.session_state.risk_results = load_results(filing)
     else:
         st.warning("Knowledge base is empty. Build it with "
                    "`python src/fetch_filings.py` and `python src/ingest.py`.")
@@ -173,21 +221,9 @@ with col_left:
 
     
     if st.session_state.doc_processed:
-        if st.button("🔍 Run Risk Analysis", type="secondary"):
-            with st.spinner("Analyzing risk across 6 categories..."):
-                overall, scores_dict, summary, read_from, evidence = run_risk_analysis(
-                    st.session_state.vectorstore,
-                    ticker=st.session_state.filing["ticker"],
-                    company_name=st.session_state.filing["company"]
-                )
-                st.session_state.risk_results = {
-                    "overall":     overall,
-                    "scores_dict": scores_dict,
-                    "summary":     summary,
-                    "read_from":   read_from,
-                    "evidence":    evidence
-                }
-            st.success("Risk analysis complete!")
+        label = "🔄 Re-run analysis" if st.session_state.risk_results else "🔍 Run Risk Analysis"
+        if st.button(label, type="secondary"):
+            run_and_cache_risk(st.session_state.filing)
 
     st.divider()
     st.caption("Built with LangChain · ChromaDB · Groq · Streamlit")
@@ -195,6 +231,9 @@ with col_left:
 
 with col_main:
     st.subheader("💬 Ask the AI Analyst")
+    if st.session_state.llm_error:
+        st.warning(st.session_state.llm_error)
+        st.session_state.llm_error = None
 
     
     if st.session_state.doc_processed:
@@ -233,52 +272,42 @@ with col_right:
     st.subheader("📈 Risk Dashboard")
 
     if st.session_state.risk_results:
-        results      = st.session_state.risk_results
-        overall      = results["overall"]
-        scores_dict  = results["scores_dict"]
-        summary      = results["summary"]
+        results     = st.session_state.risk_results
+        overall     = results["overall"]
+        scores_dict = results["scores_dict"]
+        scored      = sum(1 for score, _ in scores_dict.values() if score is not None)
 
-        
-        failed = sum(1 for score, _ in scores_dict.values() if score is None)
         if overall is not None:
             st.plotly_chart(create_gauge(overall), use_container_width=True)
+            level = risk_level(overall / 10)
+            st.markdown(f'<div class="overall-label" style="color:{LEVEL_COLORS[level]}">'
+                        f'{level} risk</div>', unsafe_allow_html=True)
         else:
-            st.error(f"No overall score: only {len(scores_dict) - failed} of {len(scores_dict)} "
-                     f"categories could be scored (at least {MIN_SCORED_CATEGORIES} needed).")
-        if failed and overall is not None:
-            st.warning(f"{failed} of {len(scores_dict)} categories could not be scored "
-                       f"and are left out of the overall score.")
+            st.error(f"No overall score: only {scored} of {len(scores_dict)} categories "
+                     f"could be scored (at least {MIN_SCORED_CATEGORIES} needed).")
+        if overall is not None and scored < len(scores_dict):
+            st.caption(f"{len(scores_dict) - scored} of {len(scores_dict)} categories could not "
+                       f"be scored and are left out of the overall score.")
+        st.caption(f"{results['source']}, {results['created']}")
 
-
-        st.markdown("**Category Breakdown:**")
         for category, (score, reason) in scores_dict.items():
-            css_class, label = get_risk_color(score)
-            short_name       = category.replace(" Risk", "")
-            score_text       = "n/a" if score is None else f"{score}/10"
-            # Reasons are model text inside HTML: escape it, and "$" so amounts
-            # are not read as LaTeX.
-            st.markdown(
-                f'<div class="risk-box {css_class}">'
-                f'<b>{short_name}</b>: {score_text} {label}<br>'
-                f'<small>{html.escape(reason).replace("$", "&#36;")}</small></div>',
-                unsafe_allow_html=True
-            )
-            st.caption(f"Read from: {results['read_from'][category] or 'nothing'}")
+            st.markdown(risk_card(category, score, reason), unsafe_allow_html=True)
             evidence = results["evidence"][category]
-            if evidence["check"]:
-                show_check(evidence["check"])
-            cited = [p for p in evidence["passages"] if p["cited"]]
-            if cited:
-                with st.expander(f"Sources ({len(cited)})"):
-                    for passage in cited:
-                        st.markdown(f"**[{passage['n']}] {passage['label']}** · "
-                                    f"[filing on sec.gov]({passage['source_url']})")
-                        st.code(passage["text"], language=None, wrap_lines=True)
+            with st.expander("Details"):
+                st.markdown(escaped(display_citations(reason)), unsafe_allow_html=True)
+                st.caption(f"Read from: {results['read_from'][category] or 'nothing'}")
+                if evidence["check"]:
+                    show_check(evidence["check"])
+                for passage in (p for p in evidence["passages"] if p["cited"]):
+                    st.markdown(f"**[{passage['n']}] {passage['label']}** · "
+                                f"[filing on sec.gov]({passage['source_url']})")
+                    st.code(passage["text"], language=None, wrap_lines=True)
 
-
-        st.divider()
-        st.markdown("**Executive Summary:**")
-        st.markdown(f"_{summary.replace('$', chr(92) + '$')}_")
+        if results.get("summary"):
+            st.divider()
+            st.markdown("**Executive Summary:**")
+            summary = display_citations(results["summary"])
+            st.markdown(f"_{summary.replace('$', chr(92) + '$')}_")
 
     else:
         st.info("Click 'Run Risk Analysis' to see the risk dashboard.")

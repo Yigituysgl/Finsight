@@ -6,9 +6,9 @@ from langchain_core.documents import Document
 
 from config import GROQ_API_KEY, GROQ_MODEL, LLM_TEMPERATURE
 from fetch_filings import load_filings
-from rag import (check_answer, chunk_key, income_statement, load_vectorstore, numbered_context,
-                 passages)
-from rubric import GENERAL, MIN_SCORED_CATEGORIES, rubric_text
+from rag import (CITATION, check_answer, chunk_key, income_statement, load_vectorstore,
+                 numbered_context, passages)
+from rubric import GENERAL, MIN_SCORED_CATEGORIES, risk_level, rubric_text
 from sections import (BALANCE_SHEET, SHORT_UNRESOLVED, ScaleLineError, cash_debt_lines,
                       scale_lines)
 
@@ -199,10 +199,54 @@ def overall_score(scores_dict):
         return None
     return round(sum(scored) / (10 * len(scored)) * 100)
 
-def get_risk_level(score):
-    if score <= 3:   return "LOW"
-    elif score <= 6: return "MEDIUM"
-    else:            return "HIGH"
+# The card line under each score: the reason's first sentence, without
+# citations. A period or semicolon ends a sentence only after a lowercase
+# letter, digit, "%" or bracket, so "U.S." and "$4.37" do not; "U.S.." (an
+# abbreviation, then the period that followed its removed citation) does.
+SENTENCE_END    = re.compile(r"(?<=[a-z0-9%)\]])[.;](?=\s|$)|(?<=\.)\.(?=\s|$)")
+SHORT_REASON_WORDS = 20
+# What is left of "(passages [3] and [4])" once the citations are removed.
+EMPTY_PARENS    = re.compile(r"\s*\((?:\s|,|and|see|passages?)*\)", re.IGNORECASE)
+
+# A sentence that only restates the company's scale ("The company reports
+# $40,648 million in net revenues, $14,892 million operating income and
+# $11,348 million net earnings (2025)") says nothing about the risk. Without
+# its figures, scale line names, names (capitalised words) and these filler
+# words, nothing is left of it.
+SCALE_TERMS     = re.compile(r"\b(?:revenues?|sales|operating income|income from operations|"
+                             r"net income|net earnings|earnings)\b", re.IGNORECASE)
+FIGURE          = re.compile(r"[$≈~]?\s*\d[\d,.]*\s*%?")
+SCALE_FILLER    = {"the", "company", "company's", "company’s", "reports", "reported", "has", "had",
+                   "of", "in", "and", "with", "for", "its", "a", "an", "was", "were", "is", "are",
+                   "total", "net", "million", "billion", "m", "bn", "fiscal", "year", "respectively",
+                   "generated", "earned", "posted", "recorded"}
+
+def restates_scale(sentence):
+    """True when the sentence names scale figures and says nothing else."""
+    if not SCALE_TERMS.search(sentence):
+        return False
+    rest = FIGURE.sub(" ", SCALE_TERMS.sub(" ", sentence))
+    words = re.findall(r"[^\W\d_][\w'’‑-]*", rest)
+    return all(word.lower() in SCALE_FILLER or word[0].isupper() for word in words)
+
+def sentences(text):
+    """The text split at SENTENCE_END, without the end marks."""
+    start = 0
+    for end in SENTENCE_END.finditer(text):
+        yield text[start:end.start()].strip()
+        start = end.end()
+    if text[start:].strip():
+        yield text[start:].strip().rstrip(".")
+
+def short_reason(reason, max_words=SHORT_REASON_WORDS):
+    """The first sentence of a reason without [n] citations, cut to max_words;
+    the next one if the first only restates the scale figures."""
+    text  = EMPTY_PARENS.sub("", CITATION.sub("", reason))
+    text  = re.sub(r"\s+([.,;:)])", r"\1", " ".join(text.split()))
+    parts = [part for part in sentences(text) if part] or [""]
+    line  = next((part for part in parts if not restates_scale(part)), parts[0])
+    words = (line[:1].upper() + line[1:]).split()
+    return " ".join(words[:max_words]) + ("…" if len(words) > max_words else "")
 
 def generate_summary(scores_dict, overall, vectorstore, ticker):
     if overall is None:
@@ -212,7 +256,7 @@ def generate_summary(scores_dict, overall, vectorstore, ticker):
     docs    = retrieve(vectorstore, ticker, "financial performance risk outlook", {"7": 3})
     context = "\n\n".join([doc.page_content for doc in docs])
     scores_text = "\n".join([
-        f"- {cat}: {score}/10 ({get_risk_level(score)})" if score is not None
+        f"- {cat}: {score}/10 ({risk_level(score).upper()})" if score is not None
         else f"- {cat}: n/a (could not be scored)"
         for cat, (score, _) in scores_dict.items()
     ])
@@ -279,7 +323,7 @@ def print_risk_report(company_name, overall, scores_dict, summary, read_from):
         if score is None:
             print(f"\n{category:20} n/a")
         else:
-            level = get_risk_level(score)
+            level = risk_level(score).upper()
             bar   = "█" * score + "░" * (10 - score)
             print(f"\n{category:20} {score}/10  [{level}]")
             print(f"  {bar}")
@@ -291,7 +335,7 @@ def print_risk_report(company_name, overall, scores_dict, summary, read_from):
     if overall is None:
         print(f"OVERALL RISK SCORE: n/a (at least {MIN_SCORED_CATEGORIES} scored categories needed)")
     else:
-        print(f"OVERALL RISK SCORE: {overall}/100  —  {get_risk_level(overall//10)} RISK")
+        print(f"OVERALL RISK SCORE: {overall}/100  —  {risk_level(overall / 10).upper()} RISK")
     print("="*50)
     print(f"\nEXECUTIVE SUMMARY:\n{summary}")
     print("\n" + "="*50)
